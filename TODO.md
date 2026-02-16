@@ -2,23 +2,123 @@
 
 ## Sword weapon overlay - STILL BROKEN, need ACT file anchor data
 
-Completely rewrote weapon attack rendering based on deep sprite analysis:
+### Why this is broken
 
-### What changed:
-- **5 weapon frames** per direction (was 3), mapped 1:1 to body frames (was [0,0,1,2,2])
-- **Per-frame hand positions** from body sprite analysis (WPN_HAND_POS arrays) replace formula-based handH
-- **Weapon drawn centered on hand** with grip offset (was bottom-center at formula Y position)
-- **Weapon scale: SCALE*0.9** (was SCALE*0.55 — weapon was nearly half body scale)
-- **Actual NW weapon frames** from sprite sheet NW section (was reusing W frames)
-- **Per-frame head anchors** during attack (HEAD_ANCHOR_ATK) — head tracks body crouch
-- **Grip position offset** (WPN_GRIP_OFF) shifts weapon so handle aligns with hand
+In Ragnarok Online, character sprites are composited from layers (body + head + weapon). Each layer's
+position is defined by **anchor points** stored in ACT (Action) files — binary animation files that
+ship with the game client. Each body animation frame has an anchor point (x, y) that tells the
+renderer exactly where the head attaches. Similarly, weapon sprites have their own ACT files with
+per-frame positions.
 
-### Status: Still doesn't look right. Estimated positions are not accurate enough.
-### Next step: Get actual ACT files and extract real anchor point data.
+Our sprite sheets (from spriters-resource.com) are just PNG rips — they have the pixel data but
+**none of the animation metadata** (anchor points, frame timing, layer offsets). Without that data,
+we're guessing where to draw the head and weapon during attacks, and the guesses are wrong.
 
-### Without ACT files, positions are estimated. Tuning knobs:
-- `WPN_HAND_POS[dir][frame]` - [xFrac, yFrac] on body where hand is (most impactful)
-- `WPN_GRIP_OFF[frame]` - how far below weapon-center the grip is (0.35=bottom for vertical, 0.0=center for horizontal)
+Walking looks fine because the body barely moves (head stays centered, no weapon). Attacking looks
+broken because the body crouches, lunges, and swings — every frame needs different head/weapon offsets.
+
+### What we learned about ACT files
+
+**Format**: Binary files, header "AC", version 0x200-0x205. Structure:
+- Actions grouped in sets of 8 (one per direction: S/SW/W/NW/N/NE/E/SE)
+- Player action groups: 0=stand, 1=walk, 2=sit, 3=pickup, 4=attackwait, 5=attack1, 6=hurt, etc.
+- Each frame has layers (sprite references + positions) and **anchor points** (x, y offsets)
+- Anchor point = head attachment position relative to body origin (character's feet)
+
+**Compositing formula** (from roBrowser source):
+```
+head_render_x = body_anchor.x - head_anchor.x
+head_render_y = body_anchor.y - head_anchor.y
+```
+
+**Real data extracted from Guillotine Cross (melee class, same job tree)**:
+```
+Attack S direction (5 frames):
+  F0: anchor (3,-66)   — head 66px above feet, 3px right (windup)
+  F1: anchor (3,-65)   — almost same
+  F2: anchor (-6,-49)  — HEAD DROPS 17px, shifts 9px left (body crouches into swing)
+  F3: anchor (-7,-49)  — continuing
+  F4: anchor (-19,-49) — head 22px left of start (follow-through lunge)
+
+Attack W direction:
+  F0: anchor (13,-79)  — head higher in side view
+  F1: anchor (13,-77)
+  F2: anchor (4,-80)
+  F3: anchor (3,-80)
+  F4: anchor (-3,-79)  — less vertical change, mostly horizontal shift
+```
+
+Key patterns from comparing 10 classes:
+- Melee classes (GC, Shadow Chaser, Assassin Cross) have **dynamic anchors** that shift per frame
+- Ranged/magic classes (Ranger, Wizard, Professor) have **static anchors** (same for all frames)
+- S and SW share identical anchors; W and NW share identical anchors
+- E/SE/NE are mirrors of W/NW/SW with flipped X values
+
+### What we already changed (v2 rewrite, still not right)
+- 5 weapon frames per direction (was 3), mapped 1:1 to body frames (was [0,0,1,2,2])
+- Per-frame hand positions from visual estimates (WPN_HAND_POS arrays)
+- Weapon drawn centered on hand with grip offset
+- Weapon scale: SCALE*0.9 (was SCALE*0.55)
+- Actual NW weapon frames from sprite sheet NW section (was reusing W)
+- Per-frame head anchors during attack (HEAD_ANCHOR_ATK)
+
+### How to continue: extract exact swordsman ACT data
+
+**Step 1: Download kRO data.grf** (~2-3GB)
+
+Full client (2023-04-04):
+https://mega.nz/folder/jUsDgRxQ#ttLmLjPY9p9cfU5_ShWVCw
+
+Just data.grf (2020-06-03):
+https://mega.nz/file/ci4l2LLK#_MBdWO_VGkIHXAufxd4ywJf-DUVE6QpoO-Es6-mTccQQ
+
+Also rdata.grf (may be needed):
+https://mega.nz/file/0v4hGBDZ#7qkuFVuDGmzJqhkOBsO84epzCADfpK93Edpejnk6C7A
+
+**Step 2: Extract the 3 ACT files we need**
+
+The files inside data.grf (Korean EUC-KR paths):
+- Body: `data/sprite/인간족/몸통/남/검사_남.act` (Swordsman male body)
+- Head: `data/sprite/인간족/머리통/남/1_남.act` (Male head style 1)
+- Weapon: `data/sprite/인간족/검사/검사_남.act` or similar (Sword weapon)
+
+We have a Python GRF reader (written inline during research) and the ACT parser at:
+`scripts/parse_act.py`
+
+```bash
+# Once data.grf is downloaded, extract and parse:
+python3 scripts/parse_act.py /path/to/검사_남.act --focus 5    # attack1 anchors
+python3 scripts/parse_act.py /path/to/검사_남.act --json        # full JSON dump
+```
+
+**Step 3: Apply the real anchor data to index.html**
+
+Replace the estimated `WPN_HAND_POS`, `HEAD_ANCHOR_ATK`, and `WPN_GRIP_OFF` arrays
+with values derived from the actual ACT anchor points. The head compositing changes to:
+```javascript
+// Per-frame head offset from ACT data (not estimated)
+const HEAD_ATK_ANCHOR_S = [[+3,-66],[+3,-65],[-6,-49],[-7,-49],[-19,-49]];
+// headX = playerX + anchor.x * SCALE_FACTOR
+// headY = playerY + anchor.y * SCALE_FACTOR
+```
+
+We'll also need the weapon ACT data for proper weapon-to-body alignment.
+
+**Step 4: Also extract weapon ACT for sword positioning**
+
+The weapon ACT file has its own anchor points per frame. The weapon is positioned using
+the same body_anchor - weapon_anchor formula. This replaces all the hand-position guessing.
+
+### Tools and references
+- ACT parser: `scripts/parse_act.py` (supports --json, --focus, --all-groups)
+- ACT format spec: https://github.com/rdw-archive/RagnarokFileFormats/blob/master/ACT.MD
+- roBrowser compositing: https://github.com/MrAntares/roBrowserLegacy (src/Renderer/Entity/EntityRender.js)
+- Extracted sample data: `/tmp/ro_act_files/` (10 third-class body ACTs from nodelay GRF)
+- Full anchor dump: `/tmp/guillotine_cross_m_anchors.json`
+
+### Current tuning knobs (estimated, will be replaced by ACT data)
+- `WPN_HAND_POS[dir][frame]` - [xFrac, yFrac] on body where hand is
+- `WPN_GRIP_OFF[frame]` - grip offset below weapon center
 - Weapon scale multiplier (currently 0.9)
 - `HEAD_ANCHOR_ATK[frame]` - head overlap into body per attack frame
 
@@ -109,8 +209,10 @@ python3 scripts/sprite_debug.py --all
 
 `[x]` done | `[~]` WIP | `[-]` looks fine | `[ ]` not checked
 
-#### Hand-Tuned (done)
-- [x] Poring
+#### Enhanced (full directional animations via sprite_overrides.json)
+- [x] Poring — standardized sheet in enemies_x/, 10 rows (stand/walk/attack/hurt/dying × S/N)
+
+#### Hand-Tuned (idle + hurt only)
 - [x] Poporing
 - [x] Drops
 - [x] Fabre

@@ -1,11 +1,33 @@
 {
   "_comment": "Per-monster frame overrides. Key = sprite filename (without _NNNNN.png). Auto-extraction is skipped for monsters listed here.",
   "_format": {
-    "idle": "[[sx, sy, sw, sh], ...] - frame rectangles from sprite sheet",
-    "hurt": "[[sx, sy, sw, sh], ...] - optional hurt frames (defaults to first idle frame)",
-    "scale": "float - override scale (default auto-calculated from frame height)",
-    "shadow": "[rx, ry] - optional shadow ellipse radii",
-    "row": "int - which row to extract from (if using auto-extract with different row)",
-    "status": "done | wip | skip - tracking status"
+    "source": "sprites/enemies_x/<name>.png - standardized sprite sheet (if present, use instead of original)",
+    "cell": "[w, h] - cell size in the standardized grid",
+    "cols": "int - number of columns in the grid",
+    "rows": {
+      "0": "row label / state+direction",
+      "N": "..."
+    },
+    "status": "done | wip | skip"
+  },
+
+  "Poring": {
+    "source": "sprites/enemies_x/Poring.png",
+    "cell": [92, 74],
+    "cols": 4,
+    "rows": {
+      "0": {"label": "Standing S",  "frames": 4},
+      "1": {"label": "Standing N",  "frames": 4},
+      "2": {"label": "Walk S",      "frames": 4},
+      "3": {"label": "Walk N",      "frames": 4},
+      "4": {"label": "Attack S",    "frames": 4},
+      "5": {"label": "Attack N",    "frames": 4},
+      "6": {"label": "Hurt S",      "frames": 2},
+      "7": {"label": "Hurt N",      "frames": 2},
+      "8": {"label": "Dying S",     "frames": 4},
+      "9": {"label": "Dying N",     "frames": 4}
+    },
+    "foot_y": 48,
+    "status": "done"
   }
 }

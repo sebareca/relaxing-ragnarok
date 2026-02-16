@@ -220,7 +220,9 @@ let monsterStatsDB={};
 let manifestData=[];
 let manifestLoaded=false;
 let settingsLoaded=false;
-function tryStart(){if(loaded===TOTAL_SPRITES&&statsLoaded&&manifestLoaded&&settingsLoaded)startGame()}
+let spriteOverrides={};
+let overridesLoaded=false;
+function tryStart(){if(loaded===TOTAL_SPRITES&&statsLoaded&&manifestLoaded&&settingsLoaded&&overridesLoaded)startGame()}
 function loadImg(name,src){
   const img=new Image();
   img.onload=()=>{sprites[name]=img;loaded++;tryStart()};
@@ -242,6 +244,7 @@ loadImg('effect1','sprites/other/Effect_1_127418.png');
 fetch('monster_stats.json').then(r=>r.json()).then(data=>{monsterStatsDB=data;statsLoaded=true;tryStart()}).catch(()=>{statsLoaded=true;tryStart()});
 fetch('sprites/manifest.json').then(r=>r.json()).then(data=>{manifestData=data;manifestLoaded=true;tryStart()}).catch(()=>{manifestLoaded=true;tryStart()});
 fetch('settings.json').then(r=>r.json()).then(data=>{S=mergeDefaults(data,DEFAULTS);SCALE=S.visuals.sprite_scale;settingsLoaded=true;tryStart()}).catch(()=>{S=DEFAULTS;SCALE=S.visuals.sprite_scale;settingsLoaded=true;tryStart()});
+fetch('sprite_overrides.json').then(r=>r.json()).then(data=>{spriteOverrides=data;overridesLoaded=true;tryStart()}).catch(()=>{overridesLoaded=true;tryStart()});
 
 // Terrain
 let terrainCanvas;
@@ -406,6 +409,7 @@ function spawnMonster(x,y){
     wanderAngle:Math.random()*Math.PI*2,
     wanderTimer:Math.random()*S.monsters.wander_timer_random,
     speed:S.monsters.speed_min+Math.random()*S.monsters.speed_random,
+    facing:'s',
     expReward:typeDef.exp,
     zenyReward:typeDef.zeny
   };
@@ -510,6 +514,7 @@ function spawnBossGroup(){
     hurtTimer:0,dieTimer:0,
     wanderAngle:Math.random()*Math.PI*2,wanderTimer:Math.random()*S.monsters.wander_timer_random,
     speed:S.boss.speed_min+Math.random()*S.boss.speed_random,
+    facing:'s',
     expReward:bossExp,zenyReward:Math.floor(bossExp*S.boss.zeny_multiplier),
     isBoss:true,bossName:bossName
   });
@@ -708,6 +713,46 @@ function buildAllMonsters(){
   for(let i=0;i<S.loading.parallel_sprite_loaders;i++)loadNext();
 }
 
+// Load enhanced sprites from sprite_overrides.json entries
+function loadEnhancedSprites(){
+  for(const [monsterKey,override] of Object.entries(spriteOverrides)){
+    if(monsterKey.startsWith('_'))continue; // skip _comment, _format
+    if(!override.source||override.status!=='done')continue;
+    // Find matching MONSTER_TYPES entry (case-insensitive key match)
+    let typeKey=null;
+    for(const [k,t] of Object.entries(MONSTER_TYPES)){
+      if(t.name===monsterKey){typeKey=k;break}
+    }
+    if(!typeKey)continue;
+    const sprKey='x_'+typeKey;
+    const img=new Image();
+    img.onload=()=>{
+      sprites[sprKey]=img;
+      const cellW=override.cell[0],cellH=override.cell[1];
+      const cols=override.cols;
+      const anims={};
+      for(const [rowIdx,rowData] of Object.entries(override.rows)){
+        const row=parseInt(rowIdx);
+        if(isNaN(row))continue;
+        // Convert label to animation key: "Standing S" -> "standing_s"
+        const animKey=rowData.label.toLowerCase().replace(/\s+/g,'_');
+        const frames=[];
+        for(let col=0;col<rowData.frames;col++){
+          frames.push([col*cellW,row*cellH,cellW,cellH]);
+        }
+        anims[animKey]=frames;
+      }
+      const typeDef=MONSTER_TYPES[typeKey];
+      typeDef.animations=anims;
+      typeDef.enhanced=true;
+      typeDef.enhancedSprite=sprKey;
+      typeDef.enhancedFootPad=override.foot_y?cellH-override.foot_y:0;
+    };
+    img.onerror=()=>{console.error('Failed to load enhanced sprite: '+override.source)};
+    img.src=override.source;
+  }
+}
+
 // Update
 function update(dt){
   gameTime+=dt;
@@ -732,6 +777,27 @@ function update(dt){
       aoeActive.frameTimer=0;
       aoeActive.frame++;
       if(aoeActive.frame>=aoeActive.frames.length)aoeActive=null;
+    }
+    // Deal damage at mid-animation frame
+    if(aoeActive&&!aoeActive.hitDone&&aoeActive.frame>=aoeActive.hitFrame){
+      aoeActive.hitDone=true;
+      const base=S.combat.damage_base+player.str+player.baseLv*S.combat.damage_per_level;
+      const aoeDmg=Math.floor(base*S.aoe_skill.damage_multiplier);
+      for(const m of monsters){
+        if(m.state==='dead'||m.state==='dying')continue;
+        if(Math.hypot(m.x-aoeActive.x,m.y-aoeActive.y)<=S.aoe_skill.radius){
+          const variance=Math.floor(Math.random()*S.combat.damage_variance);
+          const dmg=aoeDmg+variance;
+          m.hp-=dmg;m.hurtTimer=S.monsters.hurt_duration;
+          addDmgNum(m.x,m.y,dmg,true,false);
+          if(m.hp<=0)killMonster(m);
+        }
+      }
+      sndAoE();
+      shakeTimer=S.aoe_skill.shake_duration;
+      addParticles(aoeActive.x,aoeActive.y,'#ff4400',S.aoe_skill.particle_fire);
+      addParticles(aoeActive.x,aoeActive.y,'#ffaa00',S.aoe_skill.particle_fire);
+      addParticles(aoeActive.x,aoeActive.y,'#fff',S.aoe_skill.particle_white);
     }
   }
   // Lvlup
@@ -762,6 +828,7 @@ function update(dt){
         m.wanderAngle=Math.random()*Math.PI*2;
         m.wanderTimer=S.monsters.wander_timer_min+Math.random()*S.monsters.wander_timer_random;
       }
+      m.facing=Math.sin(m.wanderAngle)>0?'s':'n';
       m.x+=Math.cos(m.wanderAngle)*m.speed;
       m.y+=Math.sin(m.wanderAngle)*m.speed;
       m.x=Math.max(S.monsters.bounds_padding_x,Math.min(W-S.monsters.bounds_padding_x,m.x));
@@ -951,27 +1018,8 @@ function triggerAoE(){
   if(!sprites.effect1)return;
   if(!aoeFramesCache)aoeFramesCache=extractAllFrames(sprites.effect1);
   if(!aoeFramesCache||aoeFramesCache.length===0)return;
-  aoeActive={frame:0,frameTimer:0,x:player.x,y:player.y,frames:aoeFramesCache};
+  aoeActive={frame:0,frameTimer:0,x:player.x,y:player.y,frames:aoeFramesCache,hitDone:false,hitFrame:Math.floor(aoeFramesCache.length/2)};
   aoeSkillTimer=S.aoe_skill.cooldown;
-  // Damage all nearby alive monsters
-  const base=S.combat.damage_base+player.str+player.baseLv*S.combat.damage_per_level;
-  const aoeDmg=Math.floor(base*S.aoe_skill.damage_multiplier);
-  for(const m of monsters){
-    if(m.state==='dead'||m.state==='dying')continue;
-    if(Math.hypot(m.x-player.x,m.y-player.y)<=S.aoe_skill.radius){
-      const variance=Math.floor(Math.random()*S.combat.damage_variance);
-      const dmg=aoeDmg+variance;
-      m.hp-=dmg;m.hurtTimer=S.monsters.hurt_duration;
-      addDmgNum(m.x,m.y,dmg,true,false);
-      if(m.hp<=0)killMonster(m);
-    }
-  }
-  sndAoE();
-  shakeTimer=S.aoe_skill.shake_duration;
-  // Fire particles
-  addParticles(player.x,player.y,'#ff4400',S.aoe_skill.particle_fire);
-  addParticles(player.x,player.y,'#ffaa00',S.aoe_skill.particle_fire);
-  addParticles(player.x,player.y,'#fff',S.aoe_skill.particle_white);
 }
 
 // Cached tint canvas
@@ -1074,7 +1122,8 @@ function drawMonsterLabel(m){
   const typeDef=MONSTER_TYPES[m.type];
   const bossScale=m.isBoss?S.boss.scale_multiplier:1;
   const name=m.isBoss?(m.bossName||'Boss'):(typeDef?typeDef.name:m.type);
-  const spriteH=typeDef?typeDef.idle[0][3]*typeDef.scale*bossScale:40*SCALE;
+  const frameH=typeDef.enhanced?typeDef.animations[Object.keys(typeDef.animations)[0]][0][3]-(typeDef.enhancedFootPad||0):typeDef.idle[0][3];
+  const spriteH=typeDef?frameH*typeDef.scale*bossScale:40*SCALE;
   const y=m.y-spriteH-8;
   ctx.save();
   ctx.font=m.isBoss?'bold 13px Tahoma,Arial':'bold 11px Tahoma,Arial';
@@ -1200,23 +1249,8 @@ function render(){
 function drawMonster(m){
   const typeDef=MONSTER_TYPES[m.type];
   if(!typeDef)return;
-  const frames=typeDef.idle;
-  const hurtFrames=typeDef.hurt;
-  const img=sprites[typeDef.sprite];
-  if(!img)return;
-  let frame=frames[m.frame%frames.length];
-  let alpha=1;
-  let tint=null;
-  if(m.state==='dying'){
-    alpha=1-m.dieTimer/S.monsters.death_duration;
-    tint='rgba(255,255,255,0.5)';
-  }
-  if(m.hurtTimer>0){
-    tint='rgba(255,100,100,0.4)';
-    if(hurtFrames.length>0)frame=hurtFrames[0];
-  }
   const bossScale=m.isBoss?S.boss.scale_multiplier:1;
-  // Target indicator
+  // Target indicator (shared by both paths)
   if(player.target===m&&m.state!=='dying'){
     const [sx,sy]=typeDef.shadow;
     ctx.save();
@@ -1229,7 +1263,7 @@ function drawMonster(m){
     ctx.setLineDash([]);
     ctx.restore();
   }
-  // Boss aura
+  // Boss aura (shared by both paths)
   if(m.isBoss&&m.state!=='dying'){
     ctx.save();
     const pulse=0.7+0.3*Math.sin(gameTime*S.boss.aura_pulse_speed);
@@ -1245,11 +1279,60 @@ function drawMonster(m){
     ctx.fill();
     ctx.restore();
   }
-  // Shadow
+  // Shadow (shared by both paths)
   drawShadow(m.x,m.y,typeDef.shadow[0]*bossScale,typeDef.shadow[1]*bossScale);
-  // Sprite
-  const sc=typeDef.scale*bossScale*(m.state==='dying'?1-m.dieTimer*0.5:1);
-  drawSprite(img,frame,m.x,m.y,sc,false,alpha,tint);
+
+  if(typeDef.enhanced&&sprites[typeDef.enhancedSprite]){
+    // Enhanced rendering path: direction-aware multi-state animations
+    const img=sprites[typeDef.enhancedSprite];
+    const dir=m.facing||'s';
+    const anims=typeDef.animations;
+    let frame,alpha=1,tint=null;
+
+    if(m.state==='dying'&&anims['dying_'+dir]){
+      const dFrames=anims['dying_'+dir];
+      const progress=m.dieTimer/S.monsters.death_duration;
+      const fi=Math.min(Math.floor(progress*dFrames.length),dFrames.length-1);
+      frame=dFrames[fi];
+      if(progress>0.7)alpha=1-(progress-0.7)/0.3;
+    }else if(m.hurtTimer>0&&anims['hurt_'+dir]){
+      frame=anims['hurt_'+dir][0];
+      tint='rgba(255,100,100,0.4)';
+    }else if(anims['walk_'+dir]){
+      const walkFrames=anims['walk_'+dir];
+      frame=walkFrames[m.frame%walkFrames.length];
+    }else if(anims['standing_'+dir]){
+      const standFrames=anims['standing_'+dir];
+      frame=standFrames[m.frame%standFrames.length];
+    }else{
+      // Fallback to first available animation
+      const firstKey=Object.keys(anims)[0];
+      frame=anims[firstKey]?anims[firstKey][0]:typeDef.idle[0];
+    }
+
+    const sc=typeDef.scale*bossScale*(m.state==='dying'?1-m.dieTimer*0.5:1);
+    const footAdj=(typeDef.enhancedFootPad||0)*sc;
+    drawSprite(img,frame,m.x,m.y+footAdj,sc,false,alpha,tint);
+  }else{
+    // Legacy rendering path: single-direction idle/hurt frames
+    const frames=typeDef.idle;
+    const hurtFrames=typeDef.hurt;
+    const img=sprites[typeDef.sprite];
+    if(!img)return;
+    let frame=frames[m.frame%frames.length];
+    let alpha=1;
+    let tint=null;
+    if(m.state==='dying'){
+      alpha=1-m.dieTimer/S.monsters.death_duration;
+      tint='rgba(255,255,255,0.5)';
+    }
+    if(m.hurtTimer>0){
+      tint='rgba(255,100,100,0.4)';
+      if(hurtFrames.length>0)frame=hurtFrames[0];
+    }
+    const sc=typeDef.scale*bossScale*(m.state==='dying'?1-m.dieTimer*0.5:1);
+    drawSprite(img,frame,m.x,m.y,sc,false,alpha,tint);
+  }
   // Name label
   drawMonsterLabel(m);
 }
@@ -1391,6 +1474,7 @@ function startGame(){
   genTerrain();
   initPlayer();
   processMonsterStats();
+  loadEnhancedSprites();
   buildAllMonsters();
   // Initial monsters
   for(let i=0;i<S.spawning.initial_monster_count;i++)spawnMonster();

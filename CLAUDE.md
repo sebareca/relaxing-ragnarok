@@ -17,6 +17,8 @@
 - `monster_stats.json` - Complete monster/enemy stats for all 699 enemies with sprites (see Monster Stats section)
 - `example_maps/` - Reference screenshots of actual Ragnarok Online gameplay
 - `SPRITES.md` - Sprite technical reference (frame data, compositing rules, positioning)
+- `ATTACKS.md` - Attack & skill system reference (damage formulas, auto-attack logic, AoE skills)
+- `ENEMIES.md` - Enemy sprite standardization process (enhanced animations, directional facing, override workflow)
 - `scripts/parse_rathena_db.py` - Script to regenerate monster_stats.json from rAthena mob database
 - `scripts/fetch_monster_stats.py` - Legacy sprite→mob ID mapping (700 entries, used as reference)
 
@@ -69,7 +71,13 @@
 - **`visuals`**: `sprite_scale`, `shake_magnitude`, `crit_shake_duration`, `dmg_num_rise_speed`, `dmg_num_lifetime`, `dmg_num_crit_font_size`, `dmg_num_normal_font_size`, `dmg_num_stroke_width`, `dmg_num_x_offset_range`, `dmg_num_crit_scale`, `levelup_display_duration`
 - **`particles`**: `lifetime_min`, `lifetime_random`, `speed_min`, `speed_random`, `size_min`, `size_random`, `gravity`, `crit_count`, `boss_death_gold`, `boss_death_type`, `boss_death_white`, `normal_death_type`, `normal_death_white`, `levelup_gold`, `levelup_white`
 - **`items`**: `drop_chance`, `drop_types`, `spawn_offset_x`, `spawn_offset_y`, `despawn_time`, `bob_speed`, `bob_amplitude`
+- **`aoe_skill`**: `cooldown`, `damage_multiplier`, `radius`, `frame_duration`, `scale`, `shake_duration`, `particle_fire`, `particle_white`
 - **`loading`**: `parallel_sprite_loaders`, `sprite_load_delay_ms`, `auto_extract_target_height`, `frame_extract_min_gap`, `frame_extract_min_size`, `frame_extract_max_frames`, `frame_extract_alpha_threshold`
+
+## Combat & Skills
+- **ALWAYS read ATTACKS.md before modifying combat logic, damage formulas, or adding new skills**
+- ATTACKS.md documents the auto-attack system (targeting, damage calc, crit/cleave/double-attack), the AoE fire ring skill, and all related state/functions
+- **When adding new skills**, follow the pattern in ATTACKS.md: settings in `S`, state variables, trigger function, update loop integration, render layer, cooldown UI
 
 ## Monster Spawning & Boss System
 - Monsters spawn sorted by composite stat score: `level*2 + hp/50 + (atk_min+atk_max)/5 + defense/10 + (str+agi+vit+int+dex+luk)/20`
