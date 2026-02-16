@@ -1,0 +1,11 @@
+{
+  "_comment": "Per-monster frame overrides. Key = sprite filename (without _NNNNN.png). Auto-extraction is skipped for monsters listed here.",
+  "_format": {
+    "idle": "[[sx, sy, sw, sh], ...] - frame rectangles from sprite sheet",
+    "hurt": "[[sx, sy, sw, sh], ...] - optional hurt frames (defaults to first idle frame)",
+    "scale": "float - override scale (default auto-calculated from frame height)",
+    "shadow": "[rx, ry] - optional shadow ellipse radii",
+    "row": "int - which row to extract from (if using auto-extract with different row)",
+    "status": "done | wip | skip - tracking status"
+  }
+}

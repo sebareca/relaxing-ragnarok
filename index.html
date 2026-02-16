@@ -42,7 +42,7 @@ canvas{display:block}
 const W=960,H=640;
 let SCALE=1.8;
 let S={}; // settings - loaded from settings.json, with defaults
-const DEFAULTS={spawning:{max_monsters:28,spawn_timer_min:0.15,spawn_timer_random:0.35,initial_monster_count:20},player:{initial_str:10,initial_agi:8,move_speed:2.8,initial_atk_cooldown:1000,base_exp_max:100,job_exp_max:80,attack_range:65},combat:{damage_base:25,damage_per_level:3,damage_variance:15,crit_chance:0.15,crit_multiplier:2.5,cleave_chance:0.4,cleave_damage_ratio:0.5,cleave_range:60,double_attack_chance:0.3,double_attack_delay_ms:350},progression:{exp_multiplier_per_level:1.25,job_exp_multiplier_per_level:1.2,job_exp_ratio:0.7,str_per_level:2,atk_cooldown_reduction_per_level:4,min_atk_cooldown:500,zeny_ratio:0.25,zeny_bonus_max:10},boss:{kill_interval:30,scale_multiplier:1.4,speed_min:0.15,speed_random:0.15,aura_size:45,aura_pulse_speed:4,hp_bar_width:80,hp_bar_height:6,escort_count_min:5,escort_count_random:3,escort_distance_min:70,escort_distance_random:20,candidate_max_level:80,candidate_max_hp:20000,level_match_tolerance:20,selection_level_diff:25,death_shake_duration:0.3,zeny_multiplier:0.5,champion_hp_multiplier:3,champion_exp_multiplier:3},monsters:{speed_min:0.3,speed_random:0.4,wander_timer_min:1.5,wander_timer_random:3,bounds_padding_x:30,bounds_padding_top:60,bounds_padding_bottom:30,frame_duration:0.12,death_duration:0.5,hurt_duration:0.15},visuals:{sprite_scale:1.8,shake_magnitude:30,crit_shake_duration:0.15,dmg_num_rise_speed:70,dmg_num_lifetime:1.5,dmg_num_crit_font_size:48,dmg_num_normal_font_size:38,dmg_num_stroke_width:5,dmg_num_x_offset_range:20,dmg_num_crit_scale:1.3,levelup_display_duration:2},particles:{lifetime_min:0.4,lifetime_random:0.4,speed_min:1,speed_random:3,size_min:2,size_random:4,gravity:5,crit_count:5,boss_death_gold:20,boss_death_type:15,boss_death_white:10,normal_death_type:12,normal_death_white:4,levelup_gold:20,levelup_white:10},items:{drop_chance:0.4,drop_types:['jellyfish','apple','knife','candy'],spawn_offset_x:30,spawn_offset_y:20,despawn_time:2.5,bob_speed:4,bob_amplitude:2},loading:{parallel_sprite_loaders:5,sprite_load_delay_ms:20,auto_extract_target_height:80,frame_extract_min_gap:3,frame_extract_min_size:8,frame_extract_max_frames:8,frame_extract_alpha_threshold:50}};
+const DEFAULTS={spawning:{max_monsters:28,spawn_timer_min:0.15,spawn_timer_random:0.35,initial_monster_count:20},player:{initial_str:10,initial_agi:8,move_speed:2.8,initial_atk_cooldown:1000,base_exp_max:100,job_exp_max:80,attack_range:65},combat:{damage_base:25,damage_per_level:3,damage_variance:15,crit_chance:0.15,crit_multiplier:2.5,cleave_chance:0.4,cleave_damage_ratio:0.5,cleave_range:60,double_attack_chance:0.3,double_attack_delay_ms:350},progression:{exp_multiplier_per_level:1.25,job_exp_multiplier_per_level:1.2,job_exp_ratio:0.7,str_per_level:2,atk_cooldown_reduction_per_level:4,min_atk_cooldown:500,zeny_ratio:0.25,zeny_bonus_max:10},boss:{kill_interval:30,scale_multiplier:1.4,speed_min:0.15,speed_random:0.15,aura_size:45,aura_pulse_speed:4,hp_bar_width:80,hp_bar_height:6,escort_count_min:5,escort_count_random:3,escort_distance_min:70,escort_distance_random:20,candidate_max_level:80,candidate_max_hp:20000,level_match_tolerance:20,selection_level_diff:25,death_shake_duration:0.3,zeny_multiplier:0.5,champion_hp_multiplier:3,champion_exp_multiplier:3},monsters:{speed_min:0.3,speed_random:0.4,wander_timer_min:1.5,wander_timer_random:3,bounds_padding_x:30,bounds_padding_top:60,bounds_padding_bottom:30,frame_duration:0.12,death_duration:0.5,hurt_duration:0.15},visuals:{sprite_scale:1.8,shake_magnitude:30,crit_shake_duration:0.15,dmg_num_rise_speed:70,dmg_num_lifetime:1.5,dmg_num_crit_font_size:48,dmg_num_normal_font_size:38,dmg_num_stroke_width:5,dmg_num_x_offset_range:20,dmg_num_crit_scale:1.3,levelup_display_duration:2},particles:{lifetime_min:0.4,lifetime_random:0.4,speed_min:1,speed_random:3,size_min:2,size_random:4,gravity:5,crit_count:5,boss_death_gold:20,boss_death_type:15,boss_death_white:10,normal_death_type:12,normal_death_white:4,levelup_gold:20,levelup_white:10},items:{drop_chance:0.4,drop_types:['jellyfish','apple','knife','candy'],spawn_offset_x:30,spawn_offset_y:20,despawn_time:2.5,bob_speed:4,bob_amplitude:2},aoe_skill:{cooldown:15,damage_multiplier:5,radius:150,frame_duration:0.06,scale:2.5,shake_duration:0.3,particle_fire:25,particle_white:10},loading:{parallel_sprite_loaders:5,sprite_load_delay_ms:20,auto_extract_target_height:80,frame_extract_min_gap:3,frame_extract_min_size:8,frame_extract_max_frames:8,frame_extract_alpha_threshold:50}};
 function mergeDefaults(target,defaults){
   const result={};
   for(const k of Object.keys(defaults)){
@@ -212,7 +212,7 @@ function dirInfo(dir){
 }
 
 // Load sprites
-const TOTAL_SPRITES=11;
+const TOTAL_SPRITES=12;
 const sprites={};
 let loaded=0;
 let statsLoaded=false;
@@ -238,6 +238,7 @@ loadImg('lunatic','sprites/enemies/Lunatic_126936.png');
 loadImg('spore','sprites/enemies/Spore_126582.png');
 loadImg('wolf','sprites/enemies/Wolf_126445.png');
 loadImg('skeleton','sprites/enemies/Skeleton_126591.png');
+loadImg('effect1','sprites/other/Effect_1_127418.png');
 fetch('monster_stats.json').then(r=>r.json()).then(data=>{monsterStatsDB=data;statsLoaded=true;tryStart()}).catch(()=>{statsLoaded=true;tryStart()});
 fetch('sprites/manifest.json').then(r=>r.json()).then(data=>{manifestData=data;manifestLoaded=true;tryStart()}).catch(()=>{manifestLoaded=true;tryStart()});
 fetch('settings.json').then(r=>r.json()).then(data=>{S=mergeDefaults(data,DEFAULTS);SCALE=S.visuals.sprite_scale;settingsLoaded=true;tryStart()}).catch(()=>{S=DEFAULTS;SCALE=S.visuals.sprite_scale;settingsLoaded=true;tryStart()});
@@ -312,6 +313,9 @@ let lvlupTimer=0;
 let monsterSortOrder=[];
 let bossCandidates=[];
 let killsSinceLastBoss=0;
+let aoeSkillTimer=0;
+let aoeActive=null;
+let aoeFramesCache=null;
 const ELEMENT_COLORS={Fire:'#ff6633',Water:'#3399ff',Earth:'#cc9933',Wind:'#66cc66',Poison:'#99cc33',Holy:'#ffff99',Dark:'#9933cc',Ghost:'#ccccff',Undead:'#669999',Neutral:'#ffffff'};
 const HAND_TUNED=new Set(['poring','poporing','drops','fabre','lunatic','spore','wolf','skeleton']);
 
@@ -570,6 +574,68 @@ function extractFrames(img){
   return frames.length>=2?frames:null;
 }
 
+// Extract ALL frames from a sprite sheet (all rows, left-to-right, top-to-bottom)
+function extractAllFrames(img){
+  const w=img.width,h=img.height;
+  const tc=document.createElement('canvas');tc.width=w;tc.height=h;
+  const tx=tc.getContext('2d');tx.drawImage(img,0,0);
+  const d=tx.getImageData(0,0,w,h).data;
+  const thresh=S.loading.frame_extract_alpha_threshold;
+  const minGap=S.loading.frame_extract_min_gap;
+  const minSize=S.loading.frame_extract_min_size;
+  // Find row bands (horizontal strips separated by empty rows)
+  const rowBands=[];
+  let bandStart=-1;
+  let emptyCount=0;
+  for(let y=0;y<h;y++){
+    let has=false;
+    for(let x=0;x<w;x+=2){if(d[(y*w+x)*4+3]>thresh){has=true;break}}
+    if(has){
+      if(bandStart===-1)bandStart=y;
+      emptyCount=0;
+    }else{
+      if(bandStart!==-1){
+        emptyCount++;
+        if(emptyCount>=minGap){
+          rowBands.push([bandStart,y-emptyCount]);
+          bandStart=-1;emptyCount=0;
+        }
+      }
+    }
+  }
+  if(bandStart!==-1)rowBands.push([bandStart,h]);
+  // For each row band, extract frame columns
+  const frames=[];
+  for(const [r0,r1] of rowBands){
+    const colHas=new Uint8Array(w);
+    for(let x=0;x<w;x++){
+      for(let y=r0;y<r1;y+=2){if(d[(y*w+x)*4+3]>thresh){colHas[x]=1;break}}
+    }
+    let inF=false,fStart=0,gap=0;
+    for(let x=0;x<=w;x++){
+      const has=x<w?colHas[x]:0;
+      if(has){if(!inF){fStart=x;inF=true}gap=0}
+      else if(inF){
+        gap++;
+        if(gap>=minGap||x>=w){
+          const fEnd=x-gap;
+          let yMin=r1,yMax=r0;
+          for(let fy=r0;fy<r1;fy++){
+            for(let fx=fStart;fx<=fEnd;fx++){
+              if(d[(fy*w+fx)*4+3]>thresh){if(fy<yMin)yMin=fy;if(fy>yMax)yMax=fy;break}
+            }
+          }
+          if(fEnd-fStart>=minSize&&yMax-yMin>=minSize){
+            frames.push([fStart,yMin,fEnd-fStart,yMax-yMin+1]);
+          }
+          inF=false;gap=0;
+        }
+      }
+    }
+  }
+  return frames.length>=2?frames:null;
+}
+
 // Compute composite stat score for sorting
 function monsterScore(s){
   return (s.level||1)*2+(s.hp||0)/50+((s.attack_min||0)+(s.attack_max||0))/5
@@ -657,6 +723,17 @@ function update(dt){
     shakeX=(Math.random()-0.5)*shakeTimer*S.visuals.shake_magnitude;
     shakeY=(Math.random()-0.5)*shakeTimer*S.visuals.shake_magnitude;
   }else{shakeX=0;shakeY=0}
+  // AoE cooldown
+  if(aoeSkillTimer>0)aoeSkillTimer-=dt;
+  // AoE animation
+  if(aoeActive){
+    aoeActive.frameTimer+=dt;
+    if(aoeActive.frameTimer>=S.aoe_skill.frame_duration){
+      aoeActive.frameTimer=0;
+      aoeActive.frame++;
+      if(aoeActive.frame>=aoeActive.frames.length)aoeActive=null;
+    }
+  }
   // Lvlup
   if(lvlupTimer>0){
     lvlupTimer-=dt;
@@ -865,6 +942,38 @@ function killMonster(m){
   }
 }
 
+// AoE skill
+function sndAoE(){
+  playSound(80,0.4,0.4,'sawtooth');playSound(120,0.3,0.3,'sine');
+  playSound(200,0.15,0.2,'square');playSound(500,0.1,0.15);
+}
+function triggerAoE(){
+  if(!sprites.effect1)return;
+  if(!aoeFramesCache)aoeFramesCache=extractAllFrames(sprites.effect1);
+  if(!aoeFramesCache||aoeFramesCache.length===0)return;
+  aoeActive={frame:0,frameTimer:0,x:player.x,y:player.y,frames:aoeFramesCache};
+  aoeSkillTimer=S.aoe_skill.cooldown;
+  // Damage all nearby alive monsters
+  const base=S.combat.damage_base+player.str+player.baseLv*S.combat.damage_per_level;
+  const aoeDmg=Math.floor(base*S.aoe_skill.damage_multiplier);
+  for(const m of monsters){
+    if(m.state==='dead'||m.state==='dying')continue;
+    if(Math.hypot(m.x-player.x,m.y-player.y)<=S.aoe_skill.radius){
+      const variance=Math.floor(Math.random()*S.combat.damage_variance);
+      const dmg=aoeDmg+variance;
+      m.hp-=dmg;m.hurtTimer=S.monsters.hurt_duration;
+      addDmgNum(m.x,m.y,dmg,true,false);
+      if(m.hp<=0)killMonster(m);
+    }
+  }
+  sndAoE();
+  shakeTimer=S.aoe_skill.shake_duration;
+  // Fire particles
+  addParticles(player.x,player.y,'#ff4400',S.aoe_skill.particle_fire);
+  addParticles(player.x,player.y,'#ffaa00',S.aoe_skill.particle_fire);
+  addParticles(player.x,player.y,'#fff',S.aoe_skill.particle_white);
+}
+
 // Cached tint canvas
 const _tintCanvas=document.createElement('canvas');
 const _tintCtx=_tintCanvas.getContext('2d');
@@ -1031,6 +1140,20 @@ function render(){
     else if(e.type==='player')drawPlayer(e.obj);
     else if(e.type==='item')drawItem(e.obj);
   }
+  // AoE effect
+  if(aoeActive&&sprites.effect1){
+    const f=aoeActive.frames[aoeActive.frame];
+    if(f){
+      const [sx,sy,sw,sh]=f;
+      const sc=S.aoe_skill.scale;
+      const dw=sw*sc,dh=sh*sc;
+      ctx.save();
+      ctx.globalAlpha=0.9;
+      ctx.drawImage(sprites.effect1,sx,sy,sw,sh,
+        aoeActive.x-dw/2,aoeActive.y-dh/2,dw,dh);
+      ctx.restore();
+    }
+  }
   // Particles
   for(const p of particles){
     const alpha=1-p.age/p.maxAge;
@@ -1044,6 +1167,33 @@ function render(){
   }
   // Damage numbers (on top of everything)
   for(const d of dmgNums)drawDmgNum(d);
+  // AoE cooldown UI
+  ctx.save();
+  ctx.font='bold 12px Tahoma,Arial';
+  const cdX=8,cdY=H-20;
+  if(aoeSkillTimer>0){
+    const pct=aoeSkillTimer/S.aoe_skill.cooldown;
+    // Cooldown bar background
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    ctx.fillRect(cdX,cdY-12,80,16);
+    // Cooldown bar fill
+    ctx.fillStyle='rgba(180,80,30,0.7)';
+    ctx.fillRect(cdX,cdY-12,80*(1-pct),16);
+    ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=1;
+    ctx.strokeRect(cdX,cdY-12,80,16);
+    ctx.fillStyle='#ccc';ctx.textAlign='left';
+    ctx.fillText('Q: '+Math.ceil(aoeSkillTimer)+'s',cdX+4,cdY);
+  }else{
+    ctx.fillStyle='rgba(0,0,0,0.5)';
+    ctx.fillRect(cdX,cdY-12,80,16);
+    ctx.fillStyle='rgba(200,100,30,0.8)';
+    ctx.fillRect(cdX,cdY-12,80,16);
+    ctx.strokeStyle='rgba(0,0,0,0.7)';ctx.lineWidth=1;
+    ctx.strokeRect(cdX,cdY-12,80,16);
+    ctx.fillStyle='#fff';ctx.textAlign='left';
+    ctx.fillText('Q: Ready',cdX+4,cdY);
+  }
+  ctx.restore();
   ctx.restore();
 }
 
@@ -1226,6 +1376,13 @@ canvas.addEventListener('mousemove',e=>{
     if(Math.hypot(m.x-x,m.y-y)<30){onMonster=true;break}
   }
   canvas.style.cursor=onMonster?'pointer':'default';
+});
+
+// Keyboard input for AoE skill
+document.addEventListener('keydown',e=>{
+  if(e.key==='q'||e.key==='Q'||e.key==='1'){
+    if(aoeSkillTimer<=0&&!aoeActive&&player)triggerAoE();
+  }
 });
 
 // Start

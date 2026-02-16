@@ -118,6 +118,17 @@
     "bob_amplitude": 2
   },
 
+  "aoe_skill": {
+    "cooldown": 15,
+    "damage_multiplier": 5,
+    "radius": 150,
+    "frame_duration": 0.06,
+    "scale": 2.5,
+    "shake_duration": 0.3,
+    "particle_fire": 25,
+    "particle_white": 10
+  },
+
   "loading": {
     "parallel_sprite_loaders": 5,
     "sprite_load_delay_ms": 20,
