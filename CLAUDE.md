@@ -13,9 +13,11 @@
 - `sprites/` - All sprite sheet PNGs downloaded from spriters-resource.com
 - `sprites/manifest.json` - Asset manifest with metadata (category, type, dimensions)
 - `ro_classes.json` - Complete class/job system metadata (class trees, stats, HP/SP formulas, ASPD, builds)
-- `monster_stats.json` - Monster stat data
+- `monster_stats.json` - Complete monster/enemy stats for all 699 enemies with sprites (see Monster Stats section)
 - `example_maps/` - Reference screenshots of actual Ragnarok Online gameplay
 - `SPRITES.md` - Sprite technical reference (frame data, compositing rules, positioning)
+- `scripts/parse_rathena_db.py` - Script to regenerate monster_stats.json from rAthena mob database
+- `scripts/fetch_monster_stats.py` - Legacy sprite→mob ID mapping (700 entries, used as reference)
 
 ## Game Architecture
 - Single HTML file with inline CSS and JS
@@ -34,6 +36,17 @@
 - **ASPD**: Use `aspd_weapon_delays` for base attack speed per class+weapon combo. Formula in `derived_stat_formulas.aspd`
 - **Job change triggers**: `job_change_requirements` defines when class transitions happen (job level + base level thresholds)
 - **When adding new class features**, always reference ro_classes.json for accurate data rather than hardcoding values
+
+## Monster Stats & Enemy Data
+- **`monster_stats.json`** - Complete stat data for 699 enemies (keyed by sprite filename with underscores)
+- Data sourced from **rAthena renewal mob database** (680 entries) + manual estimates for 19 event/collab exclusives
+- **Key per entry**: Sprite filename with spaces→underscores (e.g. `Baphomet`, `Goblin_(Axe)`, `Desert_Wolf_(Baby)`)
+- **Fields per monster**: `monster_id`, `name`, `aegis_name`, `level`, `hp`, `sp`, `base_exp`, `job_exp`, `attack_min`, `attack_max`, `defense`, `magic_defense`, `str/agi/vit/int/dex/luk`, `attack_range`, `size`, `race`, `element`, `element_level`, `walk_speed`, `walk_speed_label`, `attack_delay`, `attack_motion`, `damage_motion`, `is_aggressive`, `is_boss`, `is_mvp`
+- **Drops**: `drops[]` array with `{item, rate_percent}`, plus `mvp_drops[]` for MVPs
+- **Estimated entries**: 19 monsters from event/collab content have `"estimated_stats": true` flag (PAD collab lits, Brazilian exclusives, etc.)
+- **Regenerating**: Download rAthena mob_db.yml to /tmp/ then run `python3 scripts/parse_rathena_db.py`
+- **Sprite→name mapping**: The key in monster_stats.json matches the sprite filename in `sprites/enemies/` (strip frame number suffix `_NNNNN.png`)
+- **When adding new enemy features**, always reference monster_stats.json for accurate stats rather than hardcoding values
 
 ## Visual Style
 - Must look like actual Ragnarok Online (reference screenshots in example_maps/)

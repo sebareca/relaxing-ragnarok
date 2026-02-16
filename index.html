@@ -131,8 +131,18 @@ const SWORD_WALK_DIR=[
   // N (Row 5)
   [[10,515,36,67],[58,511,35,71],[105,513,33,69],[150,513,34,69],[196,515,36,67],[244,511,35,71],[291,513,33,69],[336,513,34,69]]
 ];
-const SWORD_ATK=[
-  [10,612,45,70],[67,611,41,71],[120,615,43,67],[175,622,47,60],[234,624,47,58]
+// Attack body frames per direction (5 frames each)
+const SWORD_ATK_DIR=[
+  // S (Row 6)
+  [[10,612,45,70],[67,611,41,71],[120,615,43,67],[175,622,47,60],[234,624,47,58]],
+  // SW (Row 7)
+  [[10,715,33,67],[55,715,33,67],[100,713,39,69],[151,721,43,61],[206,722,43,60]],
+  // W (Row 8)
+  [[10,818,50,64],[72,816,40,66],[124,814,40,68],[228,819,54,63],[294,821,54,61]],
+  // NW (Row 9)
+  [[10,920,41,62],[63,917,41,65],[116,916,38,66],[214,921,45,61],[271,923,45,59]],
+  // N (reuse NW)
+  [[10,920,41,62],[63,917,41,65],[116,916,38,66],[214,921,45,61],[271,923,45,59]]
 ];
 
 // Head frames per direction (Row 0, used for all states to keep hair consistent)
@@ -140,8 +150,14 @@ const HEAD_DIR=[
   [10,15,28,25],[61,16,26,24],[112,16,24,24],[161,16,26,24],[210,15,28,25]
 ];
 
-// Weapon frames (Swordman Swords) - "Sword" Male row, south-facing frames
-const WPN_ATK=[[8,30,24,20],[63,30,14,21],[87,30,19,16]];
+// Weapon attack frames per direction (3 frames: windup, strike, impact)
+const WPN_ATK_DIR=[
+  [[4,290,32,80],[110,299,51,79],[216,297,86,68]],    // S
+  [[5,403,24,79],[101,413,31,65],[141,412,78,70]],    // SW
+  [[4,513,34,95],[119,525,53,86],[182,525,110,69]],   // W
+  [[4,513,34,95],[119,525,53,86],[182,525,110,69]],   // NW (reuse W)
+  [[4,290,32,80],[110,299,51,79],[216,297,86,68]]     // N (reuse S)
+];
 
 // Head anchor offsets per body state [yOffset from body top, in native sprite pixels]
 const HEAD_ANCHOR={stand:11, walk:19, attack:11};
@@ -488,8 +504,8 @@ function updatePlayer(dt){
         p.atkTimer=p.atkCooldown;
       }else if(p.state==='attacking'){
         p.frameTimer+=dt;
-        if(p.frameTimer>0.08){p.frameTimer=0;p.frame=Math.min(p.frame+1,4)}
-        if(p.frame>=4)p.state='idle';
+        const frameDur=p.atkCooldown/5000;
+        if(p.frameTimer>frameDur&&p.frame<4){p.frameTimer=0;p.frame++}
       }else{
         p.state='idle';p.frame=0;
       }
@@ -790,7 +806,8 @@ function drawPlayer(p){
   const [fd,flipX]=dirInfo(p.direction);
   let bodyFrame,headFrame,anchorKey;
   if(p.state==='attacking'){
-    bodyFrame=SWORD_ATK[Math.min(p.frame,SWORD_ATK.length-1)];
+    const atkFrames=SWORD_ATK_DIR[fd];
+    bodyFrame=atkFrames[Math.min(p.frame,atkFrames.length-1)];
     headFrame=HEAD_DIR[fd];
     anchorKey='attack';
   }else if(p.state==='walking'){
@@ -818,11 +835,13 @@ function drawPlayer(p){
   }
   // Draw weapon during attack
   if(p.state==='attacking'&&wpnImg){
-    const wpnFrame=WPN_ATK[Math.min(p.frame,WPN_ATK.length-1)];
+    const fi=Math.min(p.frame,4);
+    const wpnFrame=WPN_ATK_DIR[fd][[0,0,1,2,2][fi]];
     const bodyH=bodyFrame[3]*SCALE;
-    const wpnXOff=flipX?-18:18;
-    const wpnY=p.y-bodyH*0.45;
-    drawSprite(wpnImg,wpnFrame,p.x+wpnXOff,wpnY,SCALE*1.2,flipX);
+    const swing=fi/4;
+    const wpnXOff=(10+swing*14)*(flipX?-1:1);
+    const wpnY=p.y-bodyH*(0.55-swing*0.25);
+    drawSprite(wpnImg,wpnFrame,p.x+wpnXOff,wpnY,SCALE*0.85,flipX);
   }
   // Name label (above the head)
   const totalH=bodyFrame[3]*SCALE+(headFrame?headFrame[3]*SCALE*0.5:0);

@@ -120,7 +120,10 @@ Using different head sprite rows for different body states (idle vs walk vs atta
 - **Walking NW** (Row 4, 8 frames): [10,415,27,68], [49,414,29,69], [90,415,33,68], [135,416,28,67], [175,420,30,63], [217,420,38,63], [267,420,44,63], [323,419,39,64]
 - **Walking N** (Row 5, 8 frames): [10,515,36,67], [58,511,35,71], [105,513,33,69], [150,513,34,69], [196,515,36,67], [244,511,35,71], [291,513,33,69], [336,513,34,69]
 - **Attack S** (Row 6, 5 frames): [10,612,45,70], [67,611,41,71], [120,615,43,67], [175,622,47,60], [234,624,47,58]
-- **Rows 7-9**: Attack in other directions (not yet fully mapped)
+- **Attack SW** (Row 7, 5 frames): [10,715,33,67], [55,715,33,67], [100,713,39,69], [151,721,43,61], [206,722,43,60]
+- **Attack W** (Row 8, 5 frames from 6): [10,818,50,64], [72,816,40,66], [124,814,40,68], [228,819,54,63], [294,821,54,61]
+- **Attack NW** (Row 9, 5 frames from 6): [10,920,41,62], [63,917,41,65], [116,916,38,66], [214,921,45,61], [271,923,45,59]
+- Note: Each attack row also has a 2nd sub-sequence (6-7 frames) on the right side of the sheet
 
 ### Male Head - Brown Hair (sprites/heads/head_male_brown.png) - 752x607
 11 rows, 15 frames per row. Row structure maps to body action rows.
@@ -138,11 +141,16 @@ Using different head sprite rows for different body states (idle vs walk vs atta
 - Formula: `headY = player.y - bodyH + HEAD_ANCHOR[state] * SCALE`
 
 ### Swordman Swords (sprites/weapons/swordman_swords.png) - 761x2369
-- **Attack frames** (south-facing "Sword Male" row):
-  - Frames: [8,30,24,20], [63,30,14,21], [87,30,19,16]
+16 sections separated by 1px full-width separator lines. Sections 0-1 are idle/standing (tiny frames). Sections 2-5 are attack directions with full-size swing frames.
+
+- **Section 0-1** (y=0-272): Idle/standing weapon overlay (small: ~24x20, NOT for attack)
+- **Attack S** (Section 2, y=289-377, 3-frame summary): [4,290,32,80], [110,299,51,79], [216,297,86,68]
+- **Attack SW** (Section 3, y=403-481, 3-frame summary): [5,403,24,79], [101,413,31,65], [141,412,78,70]
+- **Attack W** (Section 4, y=513-610, 3-frame summary): [4,513,34,95], [119,525,53,86], [182,525,110,69]
+- **Attack NW** (Section 5, y=637-722): Not yet fully extracted, reuse W frames
 - Weapon is only drawn during attack animation
-- Position: offset horizontally from player center, vertically at hand height (~45% of body height from bottom)
-- Scale: SCALE * 1.2 for slightly larger weapon visual
+- Position: sword swings in arc from overhead (bodyH*0.55) to extended (bodyH*0.30)
+- Scale: SCALE * 0.85
 
 ## Bulk Downloaded Assets (sprites/manifest.json)
 All 1277 RO sprite assets organized into subfolders:
