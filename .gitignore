@@ -1,0 +1,7 @@
+sprites/*
+.DS_Store
+.claude/*
+example_maps/*
+monster_stats.json
+ro_classes.json
+scripts/
