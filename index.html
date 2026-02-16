@@ -39,7 +39,19 @@ canvas{display:block}
 <div id="loading">Loading sprites<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
 </div>
 <script>
-const W=960,H=640,SCALE=1.8;
+const W=960,H=640;
+let SCALE=1.8;
+let S={}; // settings - loaded from settings.json, with defaults
+const DEFAULTS={spawning:{max_monsters:28,spawn_timer_min:0.15,spawn_timer_random:0.35,initial_monster_count:20},player:{initial_str:10,initial_agi:8,move_speed:2.8,initial_atk_cooldown:1000,base_exp_max:100,job_exp_max:80,attack_range:65},combat:{damage_base:25,damage_per_level:3,damage_variance:15,crit_chance:0.15,crit_multiplier:2.5,cleave_chance:0.4,cleave_damage_ratio:0.5,cleave_range:60,double_attack_chance:0.3,double_attack_delay_ms:350},progression:{exp_multiplier_per_level:1.25,job_exp_multiplier_per_level:1.2,job_exp_ratio:0.7,str_per_level:2,atk_cooldown_reduction_per_level:4,min_atk_cooldown:500,zeny_ratio:0.25,zeny_bonus_max:10},boss:{kill_interval:30,scale_multiplier:1.4,speed_min:0.15,speed_random:0.15,aura_size:45,aura_pulse_speed:4,hp_bar_width:80,hp_bar_height:6,escort_count_min:5,escort_count_random:3,escort_distance_min:70,escort_distance_random:20,candidate_max_level:80,candidate_max_hp:20000,level_match_tolerance:20,selection_level_diff:25,death_shake_duration:0.3,zeny_multiplier:0.5,champion_hp_multiplier:3,champion_exp_multiplier:3},monsters:{speed_min:0.3,speed_random:0.4,wander_timer_min:1.5,wander_timer_random:3,bounds_padding_x:30,bounds_padding_top:60,bounds_padding_bottom:30,frame_duration:0.12,death_duration:0.5,hurt_duration:0.15},visuals:{sprite_scale:1.8,shake_magnitude:30,crit_shake_duration:0.15,dmg_num_rise_speed:70,dmg_num_lifetime:1.5,dmg_num_crit_font_size:48,dmg_num_normal_font_size:38,dmg_num_stroke_width:5,dmg_num_x_offset_range:20,dmg_num_crit_scale:1.3,levelup_display_duration:2},particles:{lifetime_min:0.4,lifetime_random:0.4,speed_min:1,speed_random:3,size_min:2,size_random:4,gravity:5,crit_count:5,boss_death_gold:20,boss_death_type:15,boss_death_white:10,normal_death_type:12,normal_death_white:4,levelup_gold:20,levelup_white:10},items:{drop_chance:0.4,drop_types:['jellyfish','apple','knife','candy'],spawn_offset_x:30,spawn_offset_y:20,despawn_time:2.5,bob_speed:4,bob_amplitude:2},loading:{parallel_sprite_loaders:5,sprite_load_delay_ms:20,auto_extract_target_height:80,frame_extract_min_gap:3,frame_extract_min_size:8,frame_extract_max_frames:8,frame_extract_alpha_threshold:50}};
+function mergeDefaults(target,defaults){
+  const result={};
+  for(const k of Object.keys(defaults)){
+    if(typeof defaults[k]==='object'&&!Array.isArray(defaults[k])&&defaults[k]!==null){
+      result[k]=mergeDefaults(target&&target[k]||{},defaults[k]);
+    }else{result[k]=target&&target[k]!==undefined?target[k]:defaults[k]}
+  }
+  return result;
+}
 const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
 const lvlupEl=document.getElementById('lvlup');
 
@@ -150,17 +162,43 @@ const HEAD_DIR=[
   [10,15,28,25],[61,16,26,24],[112,16,24,24],[161,16,26,24],[210,15,28,25]
 ];
 
-// Weapon attack frames per direction (3 frames: windup, strike, impact)
+// Weapon attack frames per direction (5 frames each, matched 1:1 with body frames)
 const WPN_ATK_DIR=[
-  [[4,290,32,80],[110,299,51,79],[216,297,86,68]],    // S
-  [[5,403,24,79],[101,413,31,65],[141,412,78,70]],    // SW
-  [[4,513,34,95],[119,525,53,86],[182,525,110,69]],   // W
-  [[4,513,34,95],[119,525,53,86],[182,525,110,69]],   // NW (reuse W)
-  [[4,290,32,80],[110,299,51,79],[216,297,86,68]]     // N (reuse S)
+  // S: weapon frames 0,2,3,4,5 from 7-frame sequence
+  [[4,290,32,80],[77,294,25,64],[110,299,51,79],[166,299,38,74],[216,297,86,68]],
+  // SW: weapon frames 0,2,3,4,5
+  [[5,403,24,79],[68,404,26,67],[101,413,31,65],[141,412,78,70],[228,407,28,64]],
+  // W: weapon frames 0,1,2,3,4
+  [[4,513,34,95],[48,514,24,93],[80,519,30,88],[119,525,53,86],[182,525,110,69]],
+  // NW: actual NW section frames 0,1,2,3,4
+  [[6,639,30,78],[46,637,23,82],[77,643,24,62],[111,650,41,63],[156,649,89,74]],
+  // N: reuse NW weapon frames
+  [[6,639,30,78],[46,637,23,82],[77,643,24,62],[111,650,41,63],[156,649,89,74]]
 ];
 
+// Per-frame weapon hand position on the body as [xFrac, yFrac] of body frame
+// (0,0)=top-left, (1,1)=bottom-right -- where the character grips the weapon
+const WPN_HAND_POS=[
+  // S: hand on right side, moves from upper-right to lower-right during swing
+  [[0.67,0.11],[0.66,0.20],[0.70,0.33],[0.72,0.37],[0.72,0.43]],
+  // SW: hand on right, similar arc
+  [[0.67,0.12],[0.67,0.22],[0.72,0.32],[0.70,0.36],[0.70,0.42]],
+  // W: hand starts left (behind), swings right (forward)
+  [[0.30,0.13],[0.38,0.18],[0.45,0.29],[0.56,0.32],[0.65,0.36]],
+  // NW: similar to W
+  [[0.37,0.08],[0.39,0.12],[0.45,0.23],[0.56,0.30],[0.62,0.34]],
+  // N: hand on left side (facing away, weapon arm on viewer's left)
+  [[0.33,0.11],[0.34,0.20],[0.30,0.33],[0.28,0.37],[0.28,0.43]]
+];
+
+// Weapon grip position: how far below center the grip is (fraction of weapon height)
+// Early frames: grip near bottom (sword vertical), late frames: grip near center (horizontal)
+const WPN_GRIP_OFF=[0.35, 0.30, 0.20, 0.10, 0.0];
+
 // Head anchor offsets per body state [yOffset from body top, in native sprite pixels]
+// Attack uses per-frame values since body crouches during swing
 const HEAD_ANCHOR={stand:11, walk:19, attack:11};
+const HEAD_ANCHOR_ATK=[11, 11, 10, 9, 8];
 
 // Direction helpers
 function moveDir(dx,dy){
@@ -177,10 +215,16 @@ function dirInfo(dir){
 const TOTAL_SPRITES=11;
 const sprites={};
 let loaded=0;
+let statsLoaded=false;
+let monsterStatsDB={};
+let manifestData=[];
+let manifestLoaded=false;
+let settingsLoaded=false;
+function tryStart(){if(loaded===TOTAL_SPRITES&&statsLoaded&&manifestLoaded&&settingsLoaded)startGame()}
 function loadImg(name,src){
   const img=new Image();
-  img.onload=()=>{sprites[name]=img;loaded++;if(loaded===TOTAL_SPRITES)startGame()};
-  img.onerror=()=>{console.error('Failed to load '+src);loaded++;if(loaded===TOTAL_SPRITES)startGame()};
+  img.onload=()=>{sprites[name]=img;loaded++;tryStart()};
+  img.onerror=()=>{console.error('Failed to load '+src);loaded++;tryStart()};
   img.src=src;
 }
 loadImg('poring','sprites/enemies/Poring,_Santa_Poring,_&amp_Angeling_126666.png');
@@ -194,6 +238,9 @@ loadImg('lunatic','sprites/enemies/Lunatic_126936.png');
 loadImg('spore','sprites/enemies/Spore_126582.png');
 loadImg('wolf','sprites/enemies/Wolf_126445.png');
 loadImg('skeleton','sprites/enemies/Skeleton_126591.png');
+fetch('monster_stats.json').then(r=>r.json()).then(data=>{monsterStatsDB=data;statsLoaded=true;tryStart()}).catch(()=>{statsLoaded=true;tryStart()});
+fetch('sprites/manifest.json').then(r=>r.json()).then(data=>{manifestData=data;manifestLoaded=true;tryStart()}).catch(()=>{manifestLoaded=true;tryStart()});
+fetch('settings.json').then(r=>r.json()).then(data=>{S=mergeDefaults(data,DEFAULTS);SCALE=S.visuals.sprite_scale;settingsLoaded=true;tryStart()}).catch(()=>{S=DEFAULTS;SCALE=S.visuals.sprite_scale;settingsLoaded=true;tryStart()});
 
 // Terrain
 let terrainCanvas;
@@ -262,18 +309,23 @@ let shakeX=0,shakeY=0,shakeTimer=0;
 let lastTime=0,gameTime=0,spawnTimer=0;
 let clickTarget=null;
 let lvlupTimer=0;
+let monsterSortOrder=[];
+let bossCandidates=[];
+let killsSinceLastBoss=0;
+const ELEMENT_COLORS={Fire:'#ff6633',Water:'#3399ff',Earth:'#cc9933',Wind:'#66cc66',Poison:'#99cc33',Holy:'#ffff99',Dark:'#9933cc',Ghost:'#ccccff',Undead:'#669999',Neutral:'#ffffff'};
+const HAND_TUNED=new Set(['poring','poporing','drops','fabre','lunatic','spore','wolf','skeleton']);
 
 function initPlayer(){
   player={
     x:W/2,y:H/2,
     state:'idle',direction:0,
     frame:0,frameTimer:0,
-    atkTimer:0,atkCooldown:380,
+    atkTimer:0,atkCooldown:S.player.initial_atk_cooldown,
     target:null,
     baseLv:1,jobLv:1,
-    exp:0,expMax:100,jobExp:0,jobExpMax:80,
-    str:10,agi:8,
-    moveSpeed:2.8
+    exp:0,expMax:S.player.base_exp_max,jobExp:0,jobExpMax:S.player.job_exp_max,
+    str:S.player.initial_str,agi:S.player.initial_agi,
+    moveSpeed:S.player.move_speed
   };
 }
 
@@ -321,20 +373,24 @@ const MONSTER_TYPES={
 };
 
 function spawnMonster(x,y){
-  // Build list of available types based on player level
+  // Build list of available types based on player level (exclude boss types)
   const available=[];
   for(const [key,t] of Object.entries(MONSTER_TYPES)){
-    if(player.baseLv>=t.minLevel)available.push([key,t]);
+    if(player.baseLv>=t.minLevel&&!t.isBossType)available.push([key,t]);
   }
-  // Weighted random selection
-  const totalW=available.reduce((s,[_,t])=>s+t.weight,0);
+  // Dynamic weighted selection: reduce weight for monsters far below player level
+  const dynWeights=available.map(([key,t])=>{
+    const lvDiff=Math.max(0,player.baseLv-(t.realLevel||1));
+    return t.weight/(1+lvDiff/10);
+  });
+  const totalW=dynWeights.reduce((s,w)=>s+w,0);
   let r=Math.random()*totalW;
-  let chosen=available[0];
-  for(const entry of available){
-    r-=entry[1].weight;
-    if(r<=0){chosen=entry;break}
+  let chosenIdx=0;
+  for(let i=0;i<dynWeights.length;i++){
+    r-=dynWeights[i];
+    if(r<=0){chosenIdx=i;break}
   }
-  const [typeKey,typeDef]=chosen;
+  const [typeKey,typeDef]=available[chosenIdx];
   const m={
     x:x!==undefined?x:50+Math.random()*(W-100),
     y:y!==undefined?y:80+Math.random()*(H-130),
@@ -344,8 +400,8 @@ function spawnMonster(x,y){
     frame:0,frameTimer:0,
     hurtTimer:0,dieTimer:0,
     wanderAngle:Math.random()*Math.PI*2,
-    wanderTimer:Math.random()*3,
-    speed:0.3+Math.random()*0.4,
+    wanderTimer:Math.random()*S.monsters.wander_timer_random,
+    speed:S.monsters.speed_min+Math.random()*S.monsters.speed_random,
     expReward:typeDef.exp,
     zenyReward:typeDef.zeny
   };
@@ -355,23 +411,235 @@ function spawnMonster(x,y){
 // Damage numbers
 function addDmgNum(x,y,val,isCrit,isMiss){
   dmgNums.push({x,y:y-20,val,isCrit,isMiss,age:0,startY:y-20,
-    offsetX:(Math.random()-0.5)*20,scale:isCrit?1.3:1});
+    offsetX:(Math.random()-0.5)*S.visuals.dmg_num_x_offset_range,scale:isCrit?S.visuals.dmg_num_crit_scale:1});
 }
 
 function addParticles(x,y,color,count){
   for(let i=0;i<count;i++){
     const angle=Math.random()*Math.PI*2;
-    const speed=1+Math.random()*3;
+    const speed=S.particles.speed_min+Math.random()*S.particles.speed_random;
     particles.push({
       x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-2,
-      color,size:2+Math.random()*4,age:0,maxAge:0.4+Math.random()*0.4,
-      gravity:5
+      color,size:S.particles.size_min+Math.random()*S.particles.size_random,age:0,maxAge:S.particles.lifetime_min+Math.random()*S.particles.lifetime_random,
+      gravity:S.particles.gravity
     });
   }
 }
 
 function addItem(x,y,type){
-  items.push({x:x+(Math.random()-0.5)*30,y:y+(Math.random()-0.5)*20,type,age:0});
+  items.push({x:x+(Math.random()-0.5)*S.items.spawn_offset_x,y:y+(Math.random()-0.5)*S.items.spawn_offset_y,type,age:0});
+}
+
+function processMonsterStats(){
+  const jsonMap={drops:'Drops',lunatic:'Lunatic',fabre:'Fabre',spore:'Spore',skeleton:'Skeleton',poporing:'Poporing',wolf:'Wolf'};
+  for(const [key,jsonKey] of Object.entries(jsonMap)){
+    const s=monsterStatsDB[jsonKey];
+    if(!s)continue;
+    const mt=MONSTER_TYPES[key];
+    mt.realLevel=s.level;mt.hp=s.hp;mt.exp=s.base_exp;mt.jobExp=s.job_exp||0;
+    mt.zeny=Math.floor(s.base_exp*S.progression.zeny_ratio);mt.defense=s.defense||0;
+    mt.allStats=(s.str||0)+(s.agi||0)+(s.vit||0)+(s.int||0)+(s.dex||0)+(s.luk||0);
+    mt.attackMin=s.attack_min||0;mt.attackMax=s.attack_max||0;
+  }
+  // Poring not in rAthena DB - use estimated values
+  MONSTER_TYPES.poring.realLevel=1;MONSTER_TYPES.poring.hp=50;MONSTER_TYPES.poring.exp=150;
+  MONSTER_TYPES.poring.zeny=10;MONSTER_TYPES.poring.defense=0;MONSTER_TYPES.poring.allStats=6;
+  MONSTER_TYPES.poring.attackMin=1;MONSTER_TYPES.poring.attackMax=2;
+  // Composite score using ALL stats: level, hp, attack, defense, base stats
+  const entries=Object.entries(MONSTER_TYPES);
+  for(const [key,mt] of entries){
+    mt.score=(mt.realLevel||1)*2+(mt.hp||50)/50+((mt.attackMin||0)+(mt.attackMax||0))/5+(mt.defense||0)/10+(mt.allStats||0)/20;
+  }
+  entries.sort((a,b)=>a[1].score-b[1].score);
+  monsterSortOrder=entries.map(e=>e[0]);
+  entries.forEach(([key,type],i)=>{
+    type.weight=Math.max(2,10-i);
+    type.minLevel=i===0?1:Math.max(1,Math.ceil(type.realLevel*0.5));
+    type.sortOrder=i;
+  });
+  // Collect boss candidates from JSON (reasonable level/HP)
+  for(const [key,s] of Object.entries(monsterStatsDB)){
+    if(!s.is_boss||s.hp<=0||s.level<=0)continue;
+    if(s.level<=S.boss.candidate_max_level&&s.hp<S.boss.candidate_max_hp){
+      bossCandidates.push({name:s.name,hp:s.hp,exp:s.base_exp||0,level:s.level,isMvp:s.is_mvp||false});
+    }
+  }
+  bossCandidates.sort((a,b)=>a.level-b.level);
+}
+
+function findBossForLevel(plvl){
+  let best=null,bestDiff=Infinity;
+  for(const b of bossCandidates){
+    const diff=Math.abs(b.level-plvl);
+    if(diff<bestDiff){bestDiff=diff;best=b}
+  }
+  return bestDiff<=S.boss.level_match_tolerance?best:null;
+}
+
+function spawnBossGroup(){
+  // Try to find a loaded boss sprite near player level
+  let bossKey=null,bestDiff=Infinity;
+  for(const [key,type] of Object.entries(MONSTER_TYPES)){
+    if(!type.isBossType)continue;
+    const diff=Math.abs((type.realLevel||1)-player.baseLv);
+    if(diff<bestDiff&&diff<=S.boss.selection_level_diff){bestDiff=diff;bossKey=key}
+  }
+  // Fallback: champion of current highest tier
+  let currentTierKey='poring';
+  for(const [key,type] of Object.entries(MONSTER_TYPES)){
+    if(!type.isBossType&&player.baseLv>=type.minLevel)currentTierKey=key;
+  }
+  if(!bossKey)bossKey=currentTierKey;
+  const typeDef=MONSTER_TYPES[bossKey];
+  const isTrueBoss=!!typeDef.isBossType;
+  const boss=!isTrueBoss?findBossForLevel(player.baseLv):null;
+  const bossName=isTrueBoss?typeDef.name:(boss?boss.name:'Champion '+typeDef.name);
+  const bossHp=isTrueBoss?typeDef.hp:(boss?Math.max(boss.hp,typeDef.hp*S.boss.champion_hp_multiplier):typeDef.hp*S.boss.champion_hp_multiplier);
+  const bossExp=isTrueBoss?typeDef.exp:(boss?boss.exp:typeDef.exp*S.boss.champion_exp_multiplier);
+  // Spawn boss
+  const bx=150+Math.random()*(W-300);
+  const by=120+Math.random()*(H-240);
+  monsters.push({
+    x:bx,y:by,type:bossKey,
+    hp:bossHp,maxHp:bossHp,
+    state:'idle',frame:0,frameTimer:0,
+    hurtTimer:0,dieTimer:0,
+    wanderAngle:Math.random()*Math.PI*2,wanderTimer:Math.random()*S.monsters.wander_timer_random,
+    speed:S.boss.speed_min+Math.random()*S.boss.speed_random,
+    expReward:bossExp,zenyReward:Math.floor(bossExp*S.boss.zeny_multiplier),
+    isBoss:true,bossName:bossName
+  });
+  // Spawn ring of escort monsters
+  const escortCount=S.boss.escort_count_min+Math.floor(Math.random()*S.boss.escort_count_random);
+  for(let i=0;i<escortCount;i++){
+    const angle=(Math.PI*2/escortCount)*i;
+    const dist=S.boss.escort_distance_min+Math.random()*S.boss.escort_distance_random;
+    spawnMonster(
+      Math.max(30,Math.min(W-30,bx+Math.cos(angle)*dist)),
+      Math.max(60,Math.min(H-30,by+Math.sin(angle)*dist))
+    );
+  }
+}
+
+// Auto-extract idle frames from sprite sheet (Row 0)
+function extractFrames(img){
+  const w=img.width,h=img.height;
+  const tc=document.createElement('canvas');tc.width=w;tc.height=h;
+  const tx=tc.getContext('2d');tx.drawImage(img,0,0);
+  const d=tx.getImageData(0,0,w,h).data;
+  // Find first row band (continuous rows with non-transparent pixels)
+  let r0=-1,r1=-1;
+  for(let y=0;y<h;y++){
+    let has=false;
+    for(let x=0;x<w;x+=2){if(d[(y*w+x)*4+3]>S.loading.frame_extract_alpha_threshold){has=true;break}}
+    if(has&&r0===-1)r0=y;
+    if(!has&&r0!==-1&&r1===-1){r1=y;break}
+  }
+  if(r0===-1)return null;
+  if(r1===-1)r1=Math.min(r0+Math.floor(h/3),h);
+  // Find columns with content in row band
+  const colHas=new Uint8Array(w);
+  for(let x=0;x<w;x++){
+    for(let y=r0;y<r1;y+=2){if(d[(y*w+x)*4+3]>S.loading.frame_extract_alpha_threshold){colHas[x]=1;break}}
+  }
+  // Extract frame boundaries (min 3px gap between frames)
+  const frames=[];
+  let inF=false,fStart=0,gap=0;
+  for(let x=0;x<=w;x++){
+    const has=x<w?colHas[x]:0;
+    if(has){if(!inF){fStart=x;inF=true}gap=0}
+    else if(inF){
+      gap++;
+      if(gap>=S.loading.frame_extract_min_gap||x>=w){
+        const fEnd=x-gap;
+        // Get tight Y bounds for this frame
+        let yMin=r1,yMax=r0;
+        for(let fy=r0;fy<r1;fy++){
+          for(let fx=fStart;fx<=fEnd;fx++){
+            if(d[(fy*w+fx)*4+3]>S.loading.frame_extract_alpha_threshold){if(fy<yMin)yMin=fy;if(fy>yMax)yMax=fy;break}
+          }
+        }
+        if(fEnd-fStart>=S.loading.frame_extract_min_size&&yMax-yMin>=S.loading.frame_extract_min_size){
+          frames.push([fStart,yMin,fEnd-fStart,yMax-yMin+1]);
+        }
+        inF=false;gap=0;
+        if(frames.length>=S.loading.frame_extract_max_frames)break;
+      }
+    }
+  }
+  return frames.length>=2?frames:null;
+}
+
+// Compute composite stat score for sorting
+function monsterScore(s){
+  return (s.level||1)*2+(s.hp||0)/50+((s.attack_min||0)+(s.attack_max||0))/5
+    +(s.defense||0)/10+((s.str||0)+(s.agi||0)+(s.vit||0)+(s.int||0)+(s.dex||0)+(s.luk||0))/20;
+}
+
+// Build full monster registry from manifest + stats, progressively load sprites
+function buildAllMonsters(){
+  const enemies=manifestData.filter(e=>e.subfolder==='enemies');
+  const queue=[];
+  for(const entry of enemies){
+    // Extract monster key from filename: "Wolf_126445.png" -> "Wolf"
+    const base=entry.file.split('/').pop().replace('.png','');
+    const match=base.match(/^(.+)_(\d{5,6})$/);
+    if(!match)continue;
+    let key=match[1];
+    // Try to find stats - direct key match first
+    let stats=monsterStatsDB[key];
+    // For compound names like "Poring,_Santa_Poring,_&amp_Angeling", try first part
+    if(!stats&&(key.includes(',')||key.includes('&amp'))){
+      const parts=key.split(/,_|_&amp_/).map(s=>s.trim());
+      for(const p of parts){if(monsterStatsDB[p]){stats=monsterStatsDB[p];key=p;break}}
+    }
+    if(!stats||stats.hp<=0)continue;
+    // Skip hand-tuned monsters (already loaded with precise frame data)
+    const iKey=key.toLowerCase().replace(/[^a-z0-9]/g,'_');
+    if(HAND_TUNED.has(iKey))continue;
+    queue.push({key,iKey,name:stats.name,file:entry.file,stats,
+      score:monsterScore(stats),isBoss:stats.is_boss||false});
+  }
+  // Sort by composite score (weakest first = loaded first)
+  queue.sort((a,b)=>a.score-b.score);
+  // Progressive loading with 5 parallel streams
+  let idx=0;
+  function loadNext(){
+    if(idx>=queue.length)return;
+    const mon=queue[idx++];
+    const img=new Image();
+    img.onload=()=>{
+      const frames=extractFrames(img);
+      if(frames){
+        const sprKey='e_'+mon.iKey;
+        sprites[sprKey]=img;
+        const avgH=frames.reduce((s,f)=>s+f[3],0)/frames.length;
+        const avgW=frames.reduce((s,f)=>s+f[2],0)/frames.length;
+        const sc=Math.min(SCALE,S.loading.auto_extract_target_height/avgH);
+        MONSTER_TYPES[sprKey]={
+          name:mon.name,hp:mon.stats.hp,exp:mon.stats.base_exp||0,
+          zeny:Math.floor((mon.stats.base_exp||0)*S.progression.zeny_ratio),
+          minLevel:Math.max(1,Math.ceil((mon.stats.level||1)*0.5)),
+          weight:mon.isBoss?0:5,
+          sprite:sprKey,scale:sc,
+          idle:frames,hurt:[frames[0]],
+          deathColor:ELEMENT_COLORS[mon.stats.element]||'#ffffff',
+          shadow:[Math.max(12,Math.floor(avgW*sc*0.25)),Math.max(5,Math.floor(avgH*sc*0.12))],
+          realLevel:mon.stats.level||1,
+          defense:mon.stats.defense||0,
+          attackMin:mon.stats.attack_min||0,
+          attackMax:mon.stats.attack_max||0,
+          allStats:(mon.stats.str||0)+(mon.stats.agi||0)+(mon.stats.vit||0)+(mon.stats.int||0)+(mon.stats.dex||0)+(mon.stats.luk||0),
+          score:mon.score,
+          isBossType:mon.isBoss
+        };
+      }
+      setTimeout(loadNext,S.loading.sprite_load_delay_ms);
+    };
+    img.onerror=()=>{setTimeout(loadNext,5)};
+    img.src=mon.file;
+  }
+  for(let i=0;i<S.loading.parallel_sprite_loaders;i++)loadNext();
 }
 
 // Update
@@ -379,15 +647,15 @@ function update(dt){
   gameTime+=dt;
   // Spawn
   spawnTimer-=dt;
-  if(spawnTimer<=0&&monsters.filter(m=>m.state!=='dead').length<16){
+  if(spawnTimer<=0&&monsters.filter(m=>m.state!=='dead').length<S.spawning.max_monsters){
     spawnMonster();
-    spawnTimer=0.5+Math.random()*0.6;
+    spawnTimer=S.spawning.spawn_timer_min+Math.random()*S.spawning.spawn_timer_random;
   }
   // Shake
   if(shakeTimer>0){
     shakeTimer-=dt;
-    shakeX=(Math.random()-0.5)*shakeTimer*30;
-    shakeY=(Math.random()-0.5)*shakeTimer*30;
+    shakeX=(Math.random()-0.5)*shakeTimer*S.visuals.shake_magnitude;
+    shakeY=(Math.random()-0.5)*shakeTimer*S.visuals.shake_magnitude;
   }else{shakeX=0;shakeY=0}
   // Lvlup
   if(lvlupTimer>0){
@@ -399,13 +667,13 @@ function update(dt){
     if(m.state==='dead')continue;
     if(m.state==='dying'){
       m.dieTimer+=dt;
-      if(m.dieTimer>0.5){m.state='dead';continue}
+      if(m.dieTimer>S.monsters.death_duration){m.state='dead';continue}
       continue;
     }
     if(m.hurtTimer>0)m.hurtTimer-=dt;
     // Animate
     m.frameTimer+=dt;
-    if(m.frameTimer>0.12){
+    if(m.frameTimer>S.monsters.frame_duration){
       m.frameTimer=0;
       const fc=MONSTER_TYPES[m.type]?MONSTER_TYPES[m.type].idle.length:8;
       m.frame=(m.frame+1)%fc;
@@ -415,12 +683,12 @@ function update(dt){
       m.wanderTimer-=dt;
       if(m.wanderTimer<=0){
         m.wanderAngle=Math.random()*Math.PI*2;
-        m.wanderTimer=1.5+Math.random()*3;
+        m.wanderTimer=S.monsters.wander_timer_min+Math.random()*S.monsters.wander_timer_random;
       }
       m.x+=Math.cos(m.wanderAngle)*m.speed;
       m.y+=Math.sin(m.wanderAngle)*m.speed;
-      m.x=Math.max(30,Math.min(W-30,m.x));
-      m.y=Math.max(60,Math.min(H-30,m.y));
+      m.x=Math.max(S.monsters.bounds_padding_x,Math.min(W-S.monsters.bounds_padding_x,m.x));
+      m.y=Math.max(S.monsters.bounds_padding_top,Math.min(H-S.monsters.bounds_padding_bottom,m.y));
     }
   }
   // Clean dead monsters
@@ -429,7 +697,7 @@ function update(dt){
   updatePlayer(dt);
   // Update damage numbers
   for(const d of dmgNums)d.age+=dt;
-  dmgNums=dmgNums.filter(d=>d.age<1.5);
+  dmgNums=dmgNums.filter(d=>d.age<S.visuals.dmg_num_lifetime);
   // Particles
   for(const p of particles){
     p.age+=dt;
@@ -440,7 +708,7 @@ function update(dt){
   particles=particles.filter(p=>p.age<p.maxAge);
   // Items (auto-collect after delay)
   for(const it of items)it.age+=dt;
-  items=items.filter(it=>it.age<2.5);
+  items=items.filter(it=>it.age<S.items.despawn_time);
   // UI
   document.getElementById('lvlText').textContent=`Base Lv. ${player.baseLv} / Job Lv. ${player.jobLv}`;
   document.getElementById('hpBar').style.width='100%';
@@ -481,7 +749,7 @@ function updatePlayer(dt){
     const dx=m.x-p.x,dy=m.y-p.y;
     const dist=Math.hypot(dx,dy);
     p.direction=moveDir(dx,dy);
-    if(dist>65){
+    if(dist>S.player.attack_range){
       // Walk toward
       p.x+=dx/dist*p.moveSpeed;
       p.y+=dy/dist*p.moveSpeed;
@@ -496,16 +764,22 @@ function updatePlayer(dt){
         p.frame=0;p.frameTimer=0;
         doAttack(m);
         // Double attack chance
-        if(Math.random()<0.3){
+        if(Math.random()<S.combat.double_attack_chance){
           setTimeout(()=>{
             if(m.state!=='dead'&&m.state!=='dying')doAttack(m);
-          },150);
+          },S.combat.double_attack_delay_ms);
         }
         p.atkTimer=p.atkCooldown;
       }else if(p.state==='attacking'){
         p.frameTimer+=dt;
-        const frameDur=p.atkCooldown/5000;
-        if(p.frameTimer>frameDur&&p.frame<4){p.frameTimer=0;p.frame++}
+        // Animation plays over ~700ms (or less at high ASPD), then returns to idle
+        const animDur=Math.min(0.7,p.atkCooldown/1000);
+        const frameDur=animDur/5;
+        if(p.frameTimer>frameDur){
+          p.frameTimer=0;
+          if(p.frame<4)p.frame++;
+          else{p.state='idle';p.frame=0}
+        }
       }else{
         p.state='idle';p.frame=0;
       }
@@ -517,27 +791,27 @@ function updatePlayer(dt){
 
 function doAttack(m){
   if(!m||m.state==='dead'||m.state==='dying')return;
-  const isCrit=Math.random()<0.15;
-  const base=25+player.str+player.baseLv*3;
-  let dmg=base+Math.floor(Math.random()*15);
-  if(isCrit)dmg=Math.floor(dmg*2.5);
+  const isCrit=Math.random()<S.combat.crit_chance;
+  const base=S.combat.damage_base+player.str+player.baseLv*S.combat.damage_per_level;
+  let dmg=base+Math.floor(Math.random()*S.combat.damage_variance);
+  if(isCrit)dmg=Math.floor(dmg*S.combat.crit_multiplier);
   // Cleave (hit nearby monsters too)
-  const nearby=monsters.filter(om=>om!==m&&om.state!=='dead'&&om.state!=='dying'&&Math.hypot(om.x-m.x,om.y-m.y)<60);
-  if(nearby.length>0&&Math.random()<0.4){
+  const nearby=monsters.filter(om=>om!==m&&om.state!=='dead'&&om.state!=='dying'&&Math.hypot(om.x-m.x,om.y-m.y)<S.combat.cleave_range);
+  if(nearby.length>0&&Math.random()<S.combat.cleave_chance){
     const t=nearby[0];
-    const cd=Math.floor(dmg*0.5);
-    t.hp-=cd;t.hurtTimer=0.15;
+    const cd=Math.floor(dmg*S.combat.cleave_damage_ratio);
+    t.hp-=cd;t.hurtTimer=S.monsters.hurt_duration;
     addDmgNum(t.x,t.y,cd,false,false);
     sndHit();
     if(t.hp<=0)killMonster(t);
   }
   m.hp-=dmg;
-  m.hurtTimer=0.15;
+  m.hurtTimer=S.monsters.hurt_duration;
   addDmgNum(m.x,m.y,dmg,isCrit,false);
   if(isCrit){
     sndCrit();
-    shakeTimer=0.15;
-    addParticles(m.x,m.y,'#ff0',5);
+    shakeTimer=S.visuals.crit_shake_duration;
+    addParticles(m.x,m.y,'#ff0',S.particles.crit_count);
   }else{sndHit()}
   if(m.hp<=0)killMonster(m);
 }
@@ -545,35 +819,48 @@ function doAttack(m){
 function killMonster(m){
   m.state='dying';m.dieTimer=0;
   kills++;
+  killsSinceLastBoss++;
+  // Boss spawn check: every N kills, if no boss alive
+  if(killsSinceLastBoss>=S.boss.kill_interval&&!monsters.some(mm=>mm.isBoss&&mm.state!=='dead'&&mm.state!=='dying')){
+    killsSinceLastBoss=0;
+    spawnBossGroup();
+  }
   sndDie();
   const color=MONSTER_TYPES[m.type]?MONSTER_TYPES[m.type].deathColor:'#ffffff';
-  addParticles(m.x,m.y,color,12);
-  addParticles(m.x,m.y,'#fff',4);
+  if(m.isBoss){
+    addParticles(m.x,m.y,'#ffd700',S.particles.boss_death_gold);
+    addParticles(m.x,m.y,color,S.particles.boss_death_type);
+    addParticles(m.x,m.y,'#fff',S.particles.boss_death_white);
+    shakeTimer=S.boss.death_shake_duration;
+  }else{
+    addParticles(m.x,m.y,color,S.particles.normal_death_type);
+    addParticles(m.x,m.y,'#fff',S.particles.normal_death_white);
+  }
   // EXP
   player.exp+=m.expReward;
-  player.jobExp+=Math.floor(m.expReward*0.7);
-  zeny+=m.zenyReward+Math.floor(Math.random()*10);
+  player.jobExp+=Math.floor(m.expReward*S.progression.job_exp_ratio);
+  zeny+=m.zenyReward+Math.floor(Math.random()*S.progression.zeny_bonus_max);
   // Level up
   if(player.exp>=player.expMax){
     player.exp-=player.expMax;
     player.baseLv++;
-    player.expMax=Math.floor(player.expMax*1.25);
-    player.str+=2;
-    player.atkCooldown=Math.max(200,player.atkCooldown-8);
+    player.expMax=Math.floor(player.expMax*S.progression.exp_multiplier_per_level);
+    player.str+=S.progression.str_per_level;
+    player.atkCooldown=Math.max(S.progression.min_atk_cooldown,player.atkCooldown-S.progression.atk_cooldown_reduction_per_level);
     lvlupEl.textContent='Base Level Up! Lv.'+player.baseLv;
-    lvlupEl.style.opacity='1';lvlupTimer=2;
+    lvlupEl.style.opacity='1';lvlupTimer=S.visuals.levelup_display_duration;
     sndLvl();
-    addParticles(player.x,player.y,'#ff0',20);
-    addParticles(player.x,player.y,'#fff',10);
+    addParticles(player.x,player.y,'#ff0',S.particles.levelup_gold);
+    addParticles(player.x,player.y,'#fff',S.particles.levelup_white);
   }
   if(player.jobExp>=player.jobExpMax){
     player.jobExp-=player.jobExpMax;
     player.jobLv++;
-    player.jobExpMax=Math.floor(player.jobExpMax*1.2);
+    player.jobExpMax=Math.floor(player.jobExpMax*S.progression.job_exp_multiplier_per_level);
   }
   // Item drops
-  if(Math.random()<0.4){
-    const types=['jellyfish','apple','knife','candy'];
+  if(Math.random()<S.items.drop_chance){
+    const types=S.items.drop_types;
     addItem(m.x,m.y,types[Math.floor(Math.random()*types.length)]);
   }
 }
@@ -627,9 +914,9 @@ function drawShadow(x,y,rx,ry){
 }
 
 function drawDmgNum(d){
-  const progress=d.age/1.5;
+  const progress=d.age/S.visuals.dmg_num_lifetime;
   const alpha=progress<0.7?1:1-(progress-0.7)/0.3;
-  const yOff=-d.age*70;
+  const yOff=-d.age*S.visuals.dmg_num_rise_speed;
   const x=d.x+d.offsetX;
   const y=d.startY+yOff;
   // Scale pop effect
@@ -641,13 +928,13 @@ function drawDmgNum(d){
   ctx.translate(x,y);
   ctx.scale(s,s);
   const text=d.isMiss?'Miss':String(d.val);
-  const fontSize=d.isCrit?48:38;
+  const fontSize=d.isCrit?S.visuals.dmg_num_crit_font_size:S.visuals.dmg_num_normal_font_size;
   ctx.font=`900 ${fontSize}px Impact,Arial Black,sans-serif`;
   ctx.textAlign='center';
   ctx.textBaseline='middle';
   // Dark outline (thick)
   ctx.strokeStyle='rgba(0,0,0,0.9)';
-  ctx.lineWidth=5;
+  ctx.lineWidth=S.visuals.dmg_num_stroke_width;
   ctx.lineJoin='round';
   ctx.strokeText(text,0,0);
   // Gradient fill
@@ -676,22 +963,23 @@ function drawDmgNum(d){
 function drawMonsterLabel(m){
   if(m.state==='dying'||m.state==='dead')return;
   const typeDef=MONSTER_TYPES[m.type];
-  const name=typeDef?typeDef.name:m.type;
-  const spriteH=typeDef?typeDef.idle[0][3]*typeDef.scale:40*SCALE;
+  const bossScale=m.isBoss?S.boss.scale_multiplier:1;
+  const name=m.isBoss?(m.bossName||'Boss'):(typeDef?typeDef.name:m.type);
+  const spriteH=typeDef?typeDef.idle[0][3]*typeDef.scale*bossScale:40*SCALE;
   const y=m.y-spriteH-8;
   ctx.save();
-  ctx.font='bold 11px Tahoma,Arial';
+  ctx.font=m.isBoss?'bold 13px Tahoma,Arial':'bold 11px Tahoma,Arial';
   ctx.textAlign='center';
   ctx.fillStyle='rgba(0,0,0,0.5)';
   ctx.fillText(name,m.x+1,y+1);
-  ctx.fillStyle='#fff';
+  ctx.fillStyle=m.isBoss?'#ffd700':'#fff';
   ctx.fillText(name,m.x,y);
   // HP bar
   if(m.hp<m.maxHp&&m.hp>0){
-    const bw=Math.min(60,30+m.maxHp/10),bh=4;
+    const bw=m.isBoss?S.boss.hp_bar_width:Math.min(60,30+m.maxHp/10),bh=m.isBoss?S.boss.hp_bar_height:4;
     ctx.fillStyle='rgba(0,0,0,0.5)';
     ctx.fillRect(m.x-bw/2,y+3,bw,bh);
-    ctx.fillStyle='#e33';
+    ctx.fillStyle=m.isBoss?'#d4a017':'#e33';
     ctx.fillRect(m.x-bw/2,y+3,bw*(m.hp/m.maxHp),bh);
     ctx.strokeStyle='rgba(0,0,0,0.7)';
     ctx.lineWidth=0.5;
@@ -701,8 +989,9 @@ function drawMonsterLabel(m){
 }
 
 function drawItem(it){
-  const alpha=it.age>2?1-(it.age-2)/0.5:1;
-  const bob=Math.sin(it.age*4)*2;
+  const fadeStart=S.items.despawn_time-0.5;
+  const alpha=it.age>fadeStart?1-(it.age-fadeStart)/0.5:1;
+  const bob=Math.sin(it.age*S.items.bob_speed)*S.items.bob_amplitude;
   ctx.save();
   ctx.globalAlpha=alpha;
   ctx.translate(it.x,it.y+bob);
@@ -769,30 +1058,47 @@ function drawMonster(m){
   let alpha=1;
   let tint=null;
   if(m.state==='dying'){
-    alpha=1-m.dieTimer/0.5;
+    alpha=1-m.dieTimer/S.monsters.death_duration;
     tint='rgba(255,255,255,0.5)';
   }
   if(m.hurtTimer>0){
     tint='rgba(255,100,100,0.4)';
     if(hurtFrames.length>0)frame=hurtFrames[0];
   }
+  const bossScale=m.isBoss?S.boss.scale_multiplier:1;
   // Target indicator
   if(player.target===m&&m.state!=='dying'){
     const [sx,sy]=typeDef.shadow;
     ctx.save();
-    ctx.strokeStyle='rgba(255,255,255,0.6)';
-    ctx.lineWidth=1.5;
+    ctx.strokeStyle=m.isBoss?'rgba(255,215,0,0.7)':'rgba(255,255,255,0.6)';
+    ctx.lineWidth=m.isBoss?2:1.5;
     ctx.setLineDash([4,3]);
     ctx.beginPath();
-    ctx.ellipse(m.x,m.y+2,sx+6,sy+3,0,0,Math.PI*2);
+    ctx.ellipse(m.x,m.y+2,(sx+6)*bossScale,(sy+3)*bossScale,0,0,Math.PI*2);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
   }
+  // Boss aura
+  if(m.isBoss&&m.state!=='dying'){
+    ctx.save();
+    const pulse=0.7+0.3*Math.sin(gameTime*S.boss.aura_pulse_speed);
+    ctx.globalAlpha=0.35*pulse;
+    const aura=S.boss.aura_size;
+    const grad=ctx.createRadialGradient(m.x,m.y,5,m.x,m.y,aura*bossScale);
+    grad.addColorStop(0,'rgba(255,215,0,0.6)');
+    grad.addColorStop(0.5,'rgba(255,180,0,0.3)');
+    grad.addColorStop(1,'rgba(255,100,0,0)');
+    ctx.fillStyle=grad;
+    ctx.beginPath();
+    ctx.ellipse(m.x,m.y,aura*bossScale,20*bossScale,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
   // Shadow
-  drawShadow(m.x,m.y,typeDef.shadow[0],typeDef.shadow[1]);
+  drawShadow(m.x,m.y,typeDef.shadow[0]*bossScale,typeDef.shadow[1]*bossScale);
   // Sprite
-  const sc=typeDef.scale*(m.state==='dying'?1-m.dieTimer*0.5:1);
+  const sc=typeDef.scale*bossScale*(m.state==='dying'?1-m.dieTimer*0.5:1);
   drawSprite(img,frame,m.x,m.y,sc,false,alpha,tint);
   // Name label
   drawMonsterLabel(m);
@@ -827,21 +1133,45 @@ function drawPlayer(p){
   // Draw head on top of body
   if(headImg){
     // Use standing frame height as stable reference during walking
-    // (walk frames vary in height, causing head to bounce if used directly)
     const refH=(p.state==='walking'?SWORD_STAND_DIR[fd][3]:bodyFrame[3])*SCALE;
-    const overlap=HEAD_ANCHOR[p.state==='walking'?'stand':anchorKey]*SCALE;
+    let overlap;
+    if(p.state==='attacking'){
+      // Per-frame head anchor tracks body crouch during attack swing
+      overlap=HEAD_ANCHOR_ATK[Math.min(p.frame,4)]*SCALE;
+    }else{
+      overlap=HEAD_ANCHOR[p.state==='walking'?'stand':anchorKey]*SCALE;
+    }
     const headY=p.y-refH+overlap;
     drawSprite(headImg,headFrame,p.x,headY,SCALE,flipX);
   }
   // Draw weapon during attack
   if(p.state==='attacking'&&wpnImg){
     const fi=Math.min(p.frame,4);
-    const wpnFrame=WPN_ATK_DIR[fd][[0,0,1,2,2][fi]];
+    // Direct 1:1 frame mapping (5 weapon frames for 5 body frames)
+    const wpnFrame=WPN_ATK_DIR[fd][fi];
+    const wpnScale=SCALE*0.9;
+    // Calculate hand position from body frame using per-frame fractions
+    const bodyW=bodyFrame[2]*SCALE;
     const bodyH=bodyFrame[3]*SCALE;
-    const swing=fi/4;
-    const wpnXOff=(10+swing*14)*(flipX?-1:1);
-    const wpnY=p.y-bodyH*(0.55-swing*0.25);
-    drawSprite(wpnImg,wpnFrame,p.x+wpnXOff,wpnY,SCALE*0.85,flipX);
+    const hp=WPN_HAND_POS[fd][fi];
+    // Hand position in screen coords (flip x fraction when mirrored)
+    const hpx=flipX?(1-hp[0]):hp[0];
+    const handX=p.x-bodyW/2+bodyW*hpx;
+    const handY=p.y-bodyH+bodyH*hp[1];
+    // Draw weapon with grip point at hand position
+    // Grip offset shifts weapon up so grip (below center) aligns with hand
+    const [sx,sy,sw,sh]=wpnFrame;
+    const dw=sw*wpnScale,dh=sh*wpnScale;
+    const gripOff=dh*WPN_GRIP_OFF[fi];
+    ctx.save();
+    if(flipX){
+      ctx.translate(handX+dw/2,handY-dh/2-gripOff);
+      ctx.scale(-1,1);
+      ctx.drawImage(wpnImg,sx,sy,sw,sh,0,0,dw,dh);
+    }else{
+      ctx.drawImage(wpnImg,sx,sy,sw,sh,handX-dw/2,handY-dh/2-gripOff,dw,dh);
+    }
+    ctx.restore();
   }
   // Name label (above the head)
   const totalH=bodyFrame[3]*SCALE+(headFrame?headFrame[3]*SCALE*0.5:0);
@@ -903,8 +1233,10 @@ function startGame(){
   document.getElementById('loading').style.display='none';
   genTerrain();
   initPlayer();
+  processMonsterStats();
+  buildAllMonsters();
   // Initial monsters
-  for(let i=0;i<12;i++)spawnMonster();
+  for(let i=0;i<S.spawning.initial_monster_count;i++)spawnMonster();
   lastTime=performance.now();
   requestAnimationFrame(gameLoop);
 }
